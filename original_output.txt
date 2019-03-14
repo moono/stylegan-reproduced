@@ -1,0 +1,114 @@
+==G_style==
+components = {EasyDict} {}
+dlatent_avg_beta = {float} 0.995
+is_template_graph = {bool} True
+is_training = {bool} False
+is_validation = {bool} False
+kwargs = {dict} <class 'dict'>: {'num_channels': 3, 'resolution': 1024, 'label_size': 0}
+labels_in = {Tensor} Tensor("G/labels_in:0", dtype=float32, device=/device:GPU:0)
+latents_in = {Tensor} Tensor("G/latents_in:0", dtype=float32, device=/device:GPU:0)
+style_mixing_prob = {float} 0.9
+truncation_cutoff = {int} 8
+truncation_cutoff_val = {NoneType} None
+truncation_psi = {float} 0.7
+truncation_psi_val = {NoneType} None
+
+==G_synthesis==
+_kwargs = {dict} <class 'dict'>: {'label_size': 0, 'components': {}}
+blur_filter = {list} <class 'list'>: [1, 2, 1]
+const_input_layer = {bool} True
+dlatent_size = {int} 512
+dlatents_in = {Tensor} Tensor("G_synthesis/dlatents_in:0", dtype=float32, device=/device:GPU:0)
+dtype = {str} 'float32'
+fmap_base = {int} 8192
+fmap_decay = {float} 1.0
+fmap_max = {int} 512
+force_clean_graph = {bool} False
+fused_scale = {str} 'auto'
+is_template_graph = {bool} True
+nonlinearity = {str} 'lrelu'
+num_channels = {int} 3
+randomize_noise = {bool} True
+resolution = {int} 1024
+structure = {str} 'auto'
+use_instance_norm = {bool} True
+use_noise = {bool} True
+use_pixel_norm = {bool} False
+use_styles = {bool} True
+use_wscale = {bool} True
+
+==G_mapping==
+_kwargs = {dict} <class 'dict'>: {'num_channels': 3, 'resolution': 1024, 'is_template_graph': True, 'components': {}}
+dlatent_broadcast = {int} 18
+dlatent_size = {int} 512
+dtype = {str} 'float32'
+gain = {float64} 1.4142135623730951
+label_size = {int} 0
+labels_in = {Tensor} Tensor("G_mapping/labels_in:0", dtype=float32, device=/device:GPU:0)
+latent_size = {int} 512
+latents_in = {Tensor} Tensor("G_mapping/latents_in:0", dtype=float32, device=/device:GPU:0)
+mapping_fmaps = {int} 512
+mapping_layers = {int} 8
+mapping_lrmul = {float} 0.01
+mapping_nonlinearity = {str} 'lrelu'
+normalize_latents = {bool} True
+use_wscale = {bool} True
+
+
+================================================================================
+
+
+==G_style==
+components = {EasyDict} {'synthesis': <dnnlib.tflib.network.Network object at 0x7f8604271be0>, 'mapping': <dnnlib.tflib.network.Network object at 0x7f8607c67b00>}
+dlatent_avg_beta = {float} 0.995
+is_template_graph = {bool} False
+is_training = {bool} True
+is_validation = {bool} False
+kwargs = {dict} <class 'dict'>: {'num_channels': 3, 'resolution': 1024, 'label_size': 0}
+labels_in = {Tensor} Tensor("GPU0/G_loss/G/labels_in:0", shape=(?, 0), dtype=float32, device=/device:GPU:0)
+latents_in = {Tensor} Tensor("GPU0/G_loss/G/latents_in:0", shape=(?, 512), dtype=float32, device=/device:GPU:0)
+style_mixing_prob = {float} 0.9
+truncation_cutoff = {int} 8
+truncation_cutoff_val = {NoneType} None
+truncation_psi = {float} 0.7
+truncation_psi_val = {NoneType} None
+
+==G_mapping==
+_kwargs = {dict} <class 'dict'>: {'num_channels': 3, 'resolution': 1024, 'is_template_graph': False, 'components': {}}
+dlatent_broadcast = {int} 18
+dlatent_size = {int} 512
+dtype = {str} 'float32'
+label_size = {int} 0
+labels_in = {Tensor} Tensor("GPU0/G_loss/G/G_mapping/labels_in:0", shape=(?, 0), dtype=float32, device=/device:GPU:0)
+latent_size = {int} 512
+latents_in = {Tensor} Tensor("GPU0/G_loss/G/G_mapping/latents_in:0", shape=(?, 512), dtype=float32, device=/device:GPU:0)
+mapping_fmaps = {int} 512
+mapping_layers = {int} 8
+mapping_lrmul = {float} 0.01
+mapping_nonlinearity = {str} 'lrelu'
+normalize_latents = {bool} True
+use_wscale = {bool} True
+
+==G_synthesis==
+_kwargs = {dict} <class 'dict'>: {'label_size': 0, 'components': {}}
+blur_filter = {list} <class 'list'>: [1, 2, 1]
+const_input_layer = {bool} True
+dlatent_size = {int} 512
+dlatents_in = {Tensor} Tensor("GPU0/G_loss/G/G_synthesis/dlatents_in:0", shape=(?, 18, 512), dtype=float32, device=/device:GPU:0)
+dtype = {str} 'float32'
+fmap_base = {int} 8192
+fmap_decay = {float} 1.0
+fmap_max = {int} 512
+force_clean_graph = {bool} False
+fused_scale = {str} 'auto'
+is_template_graph = {bool} False
+nonlinearity = {str} 'lrelu'
+num_channels = {int} 3
+randomize_noise = {bool} True
+resolution = {int} 1024
+structure = {str} 'auto'
+use_instance_norm = {bool} True
+use_noise = {bool} True
+use_pixel_norm = {bool} False
+use_styles = {bool} True
+use_wscale = {bool} True
