@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from network.ops import blur2d, upscale2d
+from network.official_code_ops import blur2d, upscale2d
 
 
 def equalized_dense(x, units, gain=np.sqrt(2), lrmul=1.0):
