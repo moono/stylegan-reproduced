@@ -128,3 +128,19 @@ def downscale2d(x, factor=2):
             return y, grad
 
         return func(x)
+
+
+def minibatch_stddev_layer(x, group_size=4, num_new_features=1):
+    with tf.variable_scope('MinibatchStddev'):
+        group_size = tf.minimum(group_size, tf.shape(x)[0])
+        s = x.shape
+        y = tf.reshape(x, [group_size, -1, num_new_features, s[1]//num_new_features, s[2], s[3]])
+        y = tf.cast(y, tf.float32)
+        y -= tf.reduce_mean(y, axis=0, keepdims=True)
+        y = tf.reduce_mean(tf.square(y), axis=0)
+        y = tf.sqrt(y + 1e-8)
+        y = tf.reduce_mean(y, axis=[2,3,4], keepdims=True)
+        y = tf.reduce_mean(y, axis=[2])
+        y = tf.cast(y, x.dtype)
+        y = tf.tile(y, [group_size, 1, s[2], s[3]])
+        return tf.concat([x, y], axis=1)

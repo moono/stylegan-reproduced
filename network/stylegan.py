@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from network.official_code_ops import blur2d, upscale2d
+from network.official_code_ops import blur2d, upscale2d, downscale2d, minibatch_stddev_layer
 
 
 def equalized_dense(x, units, gain=np.sqrt(2), lrmul=1.0):
@@ -51,15 +51,9 @@ def to_rgb(x):
 
 def from_rgb(x, n_features):
     with tf.variable_scope('from_rgb'):
-        x = equalized_conv2d(x, features=n_features, kernels=1, gain=1.0, lrmul=1.0)
+        x = equalized_conv2d(x, features=n_features, kernels=1, gain=np.sqrt(2), lrmul=1.0)
         x = tf.nn.leaky_relu(x)
     return x
-
-
-def lerp_clip(a, b, t):
-    with tf.name_scope("lerp_clip"):
-        lerp_cliped = a + (b - a) * tf.clip_by_value(t, 0.0, 1.0)
-    return lerp_cliped
 
 
 def pixel_norm(x, epsilon=1e-8):
@@ -147,7 +141,7 @@ def synthesis_block(x, w0, w1, noise_image0, noise_image1, n_features):
     return x
 
 
-def synthesis_network(w_broadcast, noise_images=None, resolutions=None, featuremaps=None):
+def synthesis_network(w_broadcast, noise_images, alpha, resolutions, featuremaps):
     dtype = tf.float32  # w.dtype
     batch_size = tf.shape(w_broadcast[0])[0]
 
@@ -172,7 +166,7 @@ def synthesis_network(w_broadcast, noise_images=None, resolutions=None, featurem
             x = style_mod(x, w_broadcast[layer_index])
 
         # convert to 3-channel image
-        images_out = to_rgb(x)
+        prev_img = to_rgb(x)
 
     # remaning layers
     layer_index = 2
@@ -182,37 +176,88 @@ def synthesis_network(w_broadcast, noise_images=None, resolutions=None, featurem
             x = synthesis_block(x, w_broadcast[layer_index], w_broadcast[layer_index + 1],
                                 noise_images[layer_index], noise_images[layer_index + 1], n_features)
             img = to_rgb(x)
-            images_out = upscale2d(images_out)
-            with tf.variable_scope('grow'):
-                images_out = lerp_clip(img, images_out, lod_in - lod)
+            prev_img = upscale2d(prev_img)
+
+            # smooth transition
+            with tf.variable_scope('smooth_transition'):
+                prev_img = img + (prev_img - img) * tf.clip_by_value(alpha, 0.0, 1.0)
 
         # update layer index
         layer_index += 2
+
+    image_out = tf.identity(prev_img, name='image_out')
+    return image_out
+
+
+def generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps):
+    with tf.variable_scope('generator'):
+        # prepare inputs
+        dtype = tf.float32  # w.dtype
+        batch_size = tf.shape(z)[0]
+        n_layers = len(resolutions) * 2
+
+        # disentangled latents: w
+        # run through mapping network and broadcast to n_layers
+        w = mapping_network(z, w_dim, n_mapping)
+        w_broadcasted = w_broadcaster(w, w_dim, n_layers)
+
+        # create noise images: noise
+        noise_images = list()
+        for res in resolutions:
+            noise_shape = [batch_size, 1, res, res]
+            with tf.variable_scope('{:d}x{:d}'.format(res, res)):
+                noise_images.append(tf.random_normal(noise_shape, dtype=dtype, name='noise_0'))
+                noise_images.append(tf.random_normal(noise_shape, dtype=dtype, name='noise_1'))
+
+        with tf.variable_scope('synthesis'):
+            fake_images = synthesis_network(w_broadcasted, noise_images, alpha, resolutions, featuremaps)
+    return fake_images
+
+
+def discriminator_block(x, n_features):
+    with tf.variable_scope('conv0'):
+        x = equalized_conv2d(x, n_features, kernels=3, gain=np.sqrt(2), lrmul=1.0)
+        x = tf.nn.leaky_relu(x)
+
+    with tf.variable_scope('conv1'):
+        x = blur2d(x, [1, 2, 1])
+        x = equalized_conv2d(x, n_features, kernels=3, gain=np.sqrt(2), lrmul=1.0)
+        x = downscale2d(x)
+        x = tf.nn.leaky_relu(x)
     return x
 
 
-def style_generator(z, w_dim, n_mapping, resolutions, featuremaps):
-    # prepare inputs
-    dtype = tf.float32  # w.dtype
-    batch_size = tf.shape(z)[0]
-    n_layers = len(resolutions) * 2
+def discriminator(image, alpha, resolutions, featuremaps):
+    with tf.variable_scope('discriminator'):
+        img = image
+        x = from_rgb(image, featuremaps[-1])
+        for res, n_features in zip(reversed(resolutions[1:]), reversed(featuremaps[1:])):
+            with tf.variable_scope('{:d}x{:d}'.format(res, res)):
+                print('{:d}x{:d}'.format(res, res))
+                x = discriminator_block(x, n_features)
+                img = downscale2d(img)
+                y = from_rgb(img, n_features)
 
-    # disentangled latents: w
-    # run through mapping network and broadcast to n_layers
-    w = mapping_network(z, w_dim, n_mapping)
-    w_broadcasted = w_broadcaster(w, w_dim, n_layers)
+                # smooth transition
+                with tf.variable_scope('smooth_transition'):
+                    x = x + (y - x) * tf.clip_by_value(alpha, 0.0, 1.0)
 
-    # create noise images: noise
-    noise_images = list()
-    for res in resolutions:
-        noise_shape = [batch_size, 1, res, res]
+        res = resolutions[0]
+        n_features = featuremaps[0]
         with tf.variable_scope('{:d}x{:d}'.format(res, res)):
-            noise_images.append(tf.random_normal(noise_shape, dtype=dtype, name='noise_0'))
-            noise_images.append(tf.random_normal(noise_shape, dtype=dtype, name='noise_1'))
+            x = minibatch_stddev_layer(x, group_size=4, num_new_features=1)
+            with tf.variable_scope('conv0'):
+                x = equalized_conv2d(x, n_features, kernels=3, gain=np.sqrt(2), lrmul=1.0)
+                x = tf.nn.leaky_relu(x)
+            with tf.variable_scope('dense1'):
+                x = equalized_dense(x, n_features, gain=np.sqrt(2), lrmul=1.0)
+                x = tf.nn.leaky_relu(x)
+            with tf.variable_scope('dense2'):
+                x = equalized_dense(x, 1, gain=1.0, lrmul=1.0)
+                x = tf.nn.leaky_relu(x)
 
-    with tf.variable_scope('synthesis'):
-        fake_images = synthesis_network(w_broadcasted, noise_images, resolutions, featuremaps)
-    return fake_images
+        scores_out = tf.identity(x, name='scores_out')
+    return scores_out
 
 
 def main():
@@ -228,8 +273,17 @@ def main():
     print(resolutions)
     print(featuremaps)
 
+    for res, n_features in zip(reversed(resolutions[1:-1]), reversed(featuremaps[1:-1])):
+        print(res, n_features)
+
     z = tf.placeholder(tf.float32, shape=[None, z_dim], name='z')
-    fake_images = style_generator(z, w_dim, n_mapping, resolutions, featuremaps)
+    alpha = tf.Variable(initial_value=0.0, trainable=False, name='transition_alpha')
+    fake_images = generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps)
+    d_score = discriminator(fake_images, alpha, resolutions, featuremaps)
+
+    t_var = tf.trainable_variables()
+    import pprint
+    pprint.pprint(t_var)
     return
 
 
