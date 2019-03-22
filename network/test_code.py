@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from network.stylegan import style_generator, mapping_network, synthesis_network
+from network.stylegan import generator, mapping_network, synthesis_network
 
 
 def test0():
@@ -77,10 +77,124 @@ def test2():
     return
 
 
+def test3():
+    import pprint
+    import pickle
+
+    def training_schedule(cur_nimg):
+        lod_training_kimg = 600
+        lod_transition_kimg = 600
+        resolution_log2 = 10
+        lod_initial_resolution = 8
+        minibatch_base = 2
+        minibatch_dict = {4: 64, 8: 64, 16: 64, 32: 32, 64: 16, 128: 8, 256: 4, 512: 2}
+        num_gpus = 1
+        max_minibatch_per_gpu = dict()
+
+        lrate_rampup_kimg = 0
+        G_lrate_base = 0.001
+        D_lrate_base = 0.001
+        G_lrate_dict = {128: 0.0015, 256: 0.002, 512: 0.003, 1024: 0.003}
+        D_lrate_dict = {128: 0.0015, 256: 0.002, 512: 0.003, 1024: 0.003}
+
+        s = dict()
+        s['kimg'] = cur_nimg / 1000.0
+
+        # Training phase.
+        phase_dur = lod_training_kimg + lod_transition_kimg
+        phase_idx = int(np.floor(s['kimg'] / phase_dur)) if phase_dur > 0 else 0
+        phase_kimg = s['kimg'] - phase_idx * phase_dur
+
+        # Level-of-detail and resolution.
+        s['lod'] = resolution_log2
+        s['lod'] -= np.floor(np.log2(lod_initial_resolution))
+        s['lod'] -= phase_idx
+        if lod_transition_kimg > 0:
+            s['lod'] -= max(phase_kimg - lod_training_kimg, 0.0) / lod_transition_kimg
+        s['lod'] = max(s['lod'], 0.0)
+        s['resolution'] = 2 ** (resolution_log2 - int(np.floor(s['lod'])))
+
+        # Minibatch size.
+        s['minibatch'] = minibatch_dict.get(s['resolution'], minibatch_base)
+        s['minibatch'] -= s['minibatch'] % num_gpus
+        if s['resolution'] in max_minibatch_per_gpu:
+            s['minibatch'] = min(s['minibatch'], max_minibatch_per_gpu[s['resolution']] * num_gpus)
+
+        # Learning rate.
+        s['G_lrate'] = G_lrate_dict.get(s['resolution'], G_lrate_base)
+        s['D_lrate'] = D_lrate_dict.get(s['resolution'], D_lrate_base)
+        if lrate_rampup_kimg > 0:
+            rampup = min(s['kimg'] / lrate_rampup_kimg, 1.0)
+            s['G_lrate'] *= rampup
+            s['D_lrate'] *= rampup
+
+        # # Other parameters.
+        # s.tick_kimg = tick_kimg_dict.get(s['resolution'], tick_kimg_base)
+        return s
+
+    # diff = 0.00010666666666647728
+
+    cur_img = 0
+    sched = training_schedule(cur_img)
+    lod = sched['lod']
+    pprint.pprint(sched)
+
+    resolution = list()
+    lod_list = list()
+    epochs = 1000
+    while cur_img < 70000 * epochs:
+        cur_img += sched['minibatch']
+        sched = training_schedule(cur_img)
+        if lod != sched['lod']:
+            lod_list.append(sched['lod'])
+            resolution.append(sched['resolution'])
+
+            lod = sched['lod']
+
+    with open('schedule_ex_lod.pkl', 'wb') as f:
+        pickle.dump(lod_list, f)
+    with open('schedule_ex_res.pkl', 'wb') as f:
+        pickle.dump(resolution, f)
+
+    return
+
+
+def test4():
+    import pickle
+    import matplotlib.pyplot as plt
+
+    with open('schedule_ex_lod.pkl', 'rb') as f:
+        lod_list = pickle.load(f)
+    with open('schedule_ex_res.pkl', 'rb') as f:
+        resolution = pickle.load(f)
+
+    unique_res, unique_res_indices = np.unique(np.array(resolution), return_index=True)
+    fig, ax = plt.subplots()
+    plt.plot(lod_list, '--b', label='lod')
+    plt.legend()
+    ax.tick_params('vals', colors='b')
+
+    # Get second axis
+    ax2 = ax.twinx()
+    plt.plot(resolution, '--r', label='res')
+    plt.legend()
+    # ax.tick_params('vals', colors='r')
+    ax2.set_yticks(unique_res)
+
+    plt.xticks(unique_res_indices)
+    # plt.grid(True, which='both')
+    plt.gca().xaxis.grid(True)
+    plt.gca().yaxis.grid(True)
+    plt.show()
+    return
+
+
 def main():
     test0()
     # test1()
     # test2()
+    # test3()
+    # test4()
     return
 
 

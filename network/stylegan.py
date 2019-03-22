@@ -19,7 +19,6 @@ def equalized_dense(x, units, gain=np.sqrt(2), lrmul=1.0):
 
     with tf.variable_scope('equalized_dense'):
         x = tf.layers.flatten(x)
-        # w, b = prepare_weights(x.get_shape().as_list()[1], units)
         w, b = prepare_weights(x.shape[1], units)
         x = tf.matmul(x, w) + b
     return x
@@ -37,22 +36,35 @@ def equalized_conv2d(x, features, kernels, gain=np.sqrt(2), lrmul=1.0):
         return weight
 
     with tf.variable_scope('equalized_conv2d'):
-        # w = prepare_weights(kernels, x.get_shape().as_list()[1], features)
         w = prepare_weights(kernels, x.shape[1], features)
         x = tf.nn.conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME', data_format='NCHW')
     return x
 
 
+# def add_bias(x, lrmul=1):
+#     bias = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype, initializer=tf.initializers.zeros()) * lrmul
+#     x = x + tf.reshape(bias, [1, -1, 1, 1])
+#     return x
+
+
 def to_rgb(x):
     with tf.variable_scope('to_rgb'):
-        x = equalized_conv2d(x, features=3, kernels=1, gain=1.0, lrmul=1.0)
+        lrmul = 1.0
+        x = equalized_conv2d(x, features=3, kernels=1, gain=1.0, lrmul=lrmul)
+        bias = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype, initializer=tf.initializers.zeros()) * lrmul
+        x = x + tf.reshape(bias, [1, -1, 1, 1])
     return x
 
 
-def from_rgb(x, n_features):
-    with tf.variable_scope('from_rgb'):
-        x = equalized_conv2d(x, features=n_features, kernels=1, gain=np.sqrt(2), lrmul=1.0)
-        x = tf.nn.leaky_relu(x)
+def from_rgb(x, res, n_f):
+    with tf.variable_scope('{:d}x{:d}'.format(res, res)):
+        with tf.variable_scope('from_rgb'):
+            lrmul = 1.0
+            x = equalized_conv2d(x, features=n_f, kernels=1, gain=np.sqrt(2), lrmul=lrmul)
+            bias = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype,
+                                   initializer=tf.initializers.zeros()) * lrmul
+            x = x + tf.reshape(bias, [1, -1, 1, 1])
+            x = tf.nn.leaky_relu(x)
     return x
 
 
@@ -89,10 +101,11 @@ def style_mod(x, w):
 def add_noise(x, noise):
     with tf.variable_scope('add_noise'):
         channels = x.shape[1]   # tf.shape(x)[1]
-        weight = tf.get_variable('weight', shape=[1, channels, 1, 1], dtype=x.dtype,
+        weight = tf.get_variable('weight', shape=[channels], dtype=x.dtype,
                                  initializer=tf.initializers.zeros())
-        b = tf.get_variable('bias', shape=[1, channels, 1, 1], initializer=tf.initializers.zeros())
-        x = x + noise * weight + b
+        bias = tf.get_variable('bias', shape=[channels],
+                               initializer=tf.initializers.zeros())
+        x = x + noise * tf.reshape(weight, [1, -1, 1, 1]) + tf.reshape(bias, [1, -1, 1, 1])
     return x
 
 
@@ -122,10 +135,10 @@ def mapping_network(z, w_dim=512, n_mapping=8):
     return x
 
 
-def synthesis_block(x, w0, w1, noise_image0, noise_image1, n_features):
+def synthesis_block(x, w0, w1, noise_image0, noise_image1, n_f):
     with tf.variable_scope('conv0'):
         x = upscale2d(x)
-        x = equalized_conv2d(x, n_features, kernels=3, gain=np.sqrt(2), lrmul=1.0)
+        x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=1.0)
         x = blur2d(x, [1, 2, 1])
         x = add_noise(x, noise_image0)
         x = tf.nn.leaky_relu(x)
@@ -133,7 +146,7 @@ def synthesis_block(x, w0, w1, noise_image0, noise_image1, n_features):
         x = style_mod(x, w0)
 
     with tf.variable_scope('conv1'):
-        x = equalized_conv2d(x, n_features, kernels=3, gain=np.sqrt(2), lrmul=1.0)
+        x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=1.0)
         x = add_noise(x, noise_image1)
         x = tf.nn.leaky_relu(x)
         x = instance_norm(x)
@@ -146,11 +159,12 @@ def synthesis_network(w_broadcast, noise_images, alpha, resolutions, featuremaps
     batch_size = tf.shape(w_broadcast[0])[0]
 
     # early layers
-    with tf.variable_scope('4x4'):
-        n_features = featuremaps[0]
+    res = resolutions[0]
+    n_f = featuremaps[0]
+    with tf.variable_scope('{:d}x{:d}'.format(res, res)):
         with tf.variable_scope('const'):
             layer_index = 0
-            x = tf.get_variable('const', shape=[1, n_features, 4, 4], dtype=dtype, initializer=tf.initializers.ones())
+            x = tf.get_variable('const', shape=[1, n_f, 4, 4], dtype=dtype, initializer=tf.initializers.ones())
             x = tf.tile(x, [batch_size, 1, 1, 1])
             x = add_noise(x, noise_images[layer_index])
             x = tf.nn.leaky_relu(x)
@@ -159,7 +173,7 @@ def synthesis_network(w_broadcast, noise_images, alpha, resolutions, featuremaps
 
         with tf.variable_scope('conv'):
             layer_index = 1
-            x = equalized_conv2d(x, n_features, kernels=3, gain=np.sqrt(2), lrmul=1.0)
+            x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=1.0)
             x = add_noise(x, noise_images[layer_index])
             x = tf.nn.leaky_relu(x)
             x = instance_norm(x)
@@ -170,11 +184,11 @@ def synthesis_network(w_broadcast, noise_images, alpha, resolutions, featuremaps
 
     # remaning layers
     layer_index = 2
-    for res, n_features in zip(resolutions[1:], featuremaps[1:]):
+    for res, n_f in zip(resolutions[1:], featuremaps[1:]):
         # set systhesis block
         with tf.variable_scope('{:d}x{:d}'.format(res, res)):
             x = synthesis_block(x, w_broadcast[layer_index], w_broadcast[layer_index + 1],
-                                noise_images[layer_index], noise_images[layer_index + 1], n_features)
+                                noise_images[layer_index], noise_images[layer_index + 1], n_f)
             img = to_rgb(x)
             prev_img = upscale2d(prev_img)
 
@@ -214,43 +228,64 @@ def generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps):
     return fake_images
 
 
-def discriminator_block(x, n_features):
-    with tf.variable_scope('conv0'):
-        x = equalized_conv2d(x, n_features, kernels=3, gain=np.sqrt(2), lrmul=1.0)
-        x = tf.nn.leaky_relu(x)
+def discriminator_block(x, res, n_features1, n_features2):
+    lrmul = 1.0
+    with tf.variable_scope('{:d}x{:d}'.format(res, res)):
+        with tf.variable_scope('conv0'):
+            x = equalized_conv2d(x, n_features1, kernels=3, gain=np.sqrt(2), lrmul=lrmul)
+            bias0 = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype, initializer=tf.initializers.zeros()) * lrmul
+            x = x + tf.reshape(bias0, [1, -1, 1, 1])
+            x = tf.nn.leaky_relu(x)
 
-    with tf.variable_scope('conv1'):
-        x = blur2d(x, [1, 2, 1])
-        x = equalized_conv2d(x, n_features, kernels=3, gain=np.sqrt(2), lrmul=1.0)
-        x = downscale2d(x)
-        x = tf.nn.leaky_relu(x)
+        with tf.variable_scope('conv1'):
+            x = blur2d(x, [1, 2, 1])
+            x = equalized_conv2d(x, n_features2, kernels=3, gain=np.sqrt(2), lrmul=lrmul)
+            x = downscale2d(x)
+            bias1 = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype, initializer=tf.initializers.zeros()) * lrmul
+            x = x + tf.reshape(bias1, [1, -1, 1, 1])
+            x = tf.nn.leaky_relu(x)
     return x
 
 
 def discriminator(image, alpha, resolutions, featuremaps):
+    assert len(resolutions) == len(featuremaps)
+
+    # discriminator's (resolutions and featuremaps) are reversed against generator's
+    r_resolutions = resolutions[::-1]
+    r_featuremaps = featuremaps[::-1]
+
     with tf.variable_scope('discriminator'):
+        # set inputs
         img = image
-        x = from_rgb(image, featuremaps[-1])
-        for res, n_features in zip(reversed(resolutions[1:]), reversed(featuremaps[1:])):
-            with tf.variable_scope('{:d}x{:d}'.format(res, res)):
-                print('{:d}x{:d}'.format(res, res))
-                x = discriminator_block(x, n_features)
-                img = downscale2d(img)
-                y = from_rgb(img, n_features)
+        x = from_rgb(image, r_resolutions[0], r_featuremaps[0])
 
-                # smooth transition
-                with tf.variable_scope('smooth_transition'):
-                    x = x + (y - x) * tf.clip_by_value(alpha, 0.0, 1.0)
+        # stack discriminator blocks
+        for index, (res, n_f) in enumerate(zip(r_resolutions[:-1], r_featuremaps[:-1])):
+            res_next = r_resolutions[index + 1]
+            n_f_next = r_featuremaps[index + 1]
 
-        res = resolutions[0]
-        n_features = featuremaps[0]
+            x = discriminator_block(x, res, n_f, n_f_next)
+            img = downscale2d(img)
+            y = from_rgb(img, res_next, n_f_next)
+
+            # smooth transition
+            with tf.variable_scope('smooth_transition'):
+                x = x + (y - x) * tf.clip_by_value(alpha, 0.0, 1.0)
+
+        # last block
+        lrmul = 1.0
+        res = r_resolutions[-1]
+        n_f = r_featuremaps[-1]
         with tf.variable_scope('{:d}x{:d}'.format(res, res)):
             x = minibatch_stddev_layer(x, group_size=4, num_new_features=1)
             with tf.variable_scope('conv0'):
-                x = equalized_conv2d(x, n_features, kernels=3, gain=np.sqrt(2), lrmul=1.0)
+                x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=lrmul)
+                bias = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype,
+                                       initializer=tf.initializers.zeros()) * lrmul
+                x = x + tf.reshape(bias, [1, -1, 1, 1])
                 x = tf.nn.leaky_relu(x)
             with tf.variable_scope('dense1'):
-                x = equalized_dense(x, n_features, gain=np.sqrt(2), lrmul=1.0)
+                x = equalized_dense(x, n_f, gain=np.sqrt(2), lrmul=1.0)
                 x = tf.nn.leaky_relu(x)
             with tf.variable_scope('dense2'):
                 x = equalized_dense(x, 1, gain=1.0, lrmul=1.0)
@@ -273,8 +308,10 @@ def main():
     print(resolutions)
     print(featuremaps)
 
-    for res, n_features in zip(reversed(resolutions[1:-1]), reversed(featuremaps[1:-1])):
-        print(res, n_features)
+    r_resolutions = resolutions[::-1]
+    r_featuremaps = featuremaps[::-1]
+    for index, (res, n_f) in enumerate(zip(r_resolutions[:-1], r_featuremaps[:-1])):
+        print(index, res, n_f)
 
     z = tf.placeholder(tf.float32, shape=[None, z_dim], name='z')
     alpha = tf.Variable(initial_value=0.0, trainable=False, name='transition_alpha')

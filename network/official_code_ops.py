@@ -134,13 +134,70 @@ def minibatch_stddev_layer(x, group_size=4, num_new_features=1):
     with tf.variable_scope('MinibatchStddev'):
         group_size = tf.minimum(group_size, tf.shape(x)[0])
         s = x.shape
-        y = tf.reshape(x, [group_size, -1, num_new_features, s[1]//num_new_features, s[2], s[3]])
+        y = tf.reshape(x, [group_size, -1, num_new_features, s[1] // num_new_features, s[2], s[3]])
         y = tf.cast(y, tf.float32)
         y -= tf.reduce_mean(y, axis=0, keepdims=True)
         y = tf.reduce_mean(tf.square(y), axis=0)
         y = tf.sqrt(y + 1e-8)
-        y = tf.reduce_mean(y, axis=[2,3,4], keepdims=True)
+        y = tf.reduce_mean(y, axis=[2, 3, 4], keepdims=True)
         y = tf.reduce_mean(y, axis=[2])
         y = tf.cast(y, x.dtype)
         y = tf.tile(y, [group_size, 1, s[2], s[3]])
         return tf.concat([x, y], axis=1)
+
+
+def training_schedule(cur_nimg,
+                      lod_training_kimg=600,
+                      lod_transition_kimg=600,
+                      resolution_log2=10,
+                      lod_initial_resolution=8,
+                      minibatch_base=32,
+                      minibatch_dict=None,
+                      num_gpus=1,
+                      max_minibatch_per_gpu=None,
+                      lrate_rampup_kimg=0,
+                      g_lrate_base=0.001,
+                      d_lrate_base=0.001,
+                      g_lrate_dict=None,
+                      d_lrate_dict=None):
+    if minibatch_dict is None:
+        # minibatch_dict = {4: 512, 8: 256, 16: 128, 32: 64, 64: 32}
+        minibatch_dict = {4: 64, 8: 64, 16: 64, 32: 32, 64: 16, 128: 8, 256: 4, 512: 2}
+    if max_minibatch_per_gpu is None:
+        max_minibatch_per_gpu = dict()
+    if g_lrate_dict is None:
+        g_lrate_dict = {128: 0.0015, 256: 0.002, 512: 0.003, 1024: 0.003}
+    if d_lrate_dict is None:
+        d_lrate_dict = {128: 0.0015, 256: 0.002, 512: 0.003, 1024: 0.003}
+
+    s = dict()
+    s['kimg'] = cur_nimg / 1000.0
+
+    # Training phase.
+    phase_dur = lod_training_kimg + lod_transition_kimg
+    phase_idx = int(np.floor(s['kimg'] / phase_dur)) if phase_dur > 0 else 0
+    phase_kimg = s['kimg'] - phase_idx * phase_dur
+
+    # Level-of-detail and resolution.
+    s['lod'] = resolution_log2
+    s['lod'] -= np.floor(np.log2(lod_initial_resolution))
+    s['lod'] -= phase_idx
+    if lod_transition_kimg > 0:
+        s['lod'] -= max(phase_kimg - lod_training_kimg, 0.0) / lod_transition_kimg
+    s['lod'] = max(s['lod'], 0.0)
+    s['resolution'] = 2 ** (resolution_log2 - int(np.floor(s['lod'])))
+
+    # Minibatch size.
+    s['minibatch'] = minibatch_dict.get(s['resolution'], minibatch_base)
+    s['minibatch'] -= s['minibatch'] % num_gpus
+    if s['resolution'] in max_minibatch_per_gpu:
+        s['minibatch'] = min(s['minibatch'], max_minibatch_per_gpu[s['resolution']] * num_gpus)
+
+    # Learning rate.
+    s['G_lrate'] = g_lrate_dict.get(s['resolution'], g_lrate_base)
+    s['D_lrate'] = d_lrate_dict.get(s['resolution'], d_lrate_base)
+    if lrate_rampup_kimg > 0:
+        rampup = min(s['kimg'] / lrate_rampup_kimg, 1.0)
+        s['G_lrate'] *= rampup
+        s['D_lrate'] *= rampup
+    return s
