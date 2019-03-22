@@ -4,33 +4,38 @@ import tensorflow as tf
 from network.official_code_ops import blur2d, upscale2d, downscale2d, minibatch_stddev_layer
 
 
-def equalized_dense(x, units, gain=np.sqrt(2), lrmul=1.0):
-    def prepare_weights(in_features, out_features):
-        # he_std = gain / np.sqrt(in_features)  # He init
-        he_std = gain / tf.sqrt(tf.to_float(in_features))  # He init
-        init_std = 1.0 / lrmul
-        runtime_coef = he_std * lrmul
-
-        weight = tf.get_variable('weight', shape=[in_features, out_features], dtype=x.dtype,
-                                 initializer=tf.initializers.random_normal(0, init_std)) * runtime_coef
-        bias = tf.get_variable('bias', shape=[out_features], dtype=x.dtype,
-                               initializer=tf.initializers.zeros()) * lrmul
-        return weight, bias
-
-    with tf.variable_scope('equalized_dense'):
-        x = tf.layers.flatten(x)
-        w, b = prepare_weights(x.shape[1], units)
-        x = tf.matmul(x, w) + b
+def apply_bias(x, units, lrmul=1.0):
+    bias = tf.get_variable('bias', shape=[units], dtype=x.dtype, initializer=tf.initializers.zeros()) * lrmul
+    if len(x.shape) == 2:
+        x = x + bias
+    else:
+        x = x + tf.reshape(bias, [1, -1, 1, 1])
     return x
 
 
-def equalized_conv2d(x, features, kernels, gain=np.sqrt(2), lrmul=1.0):
+def equalized_dense(x, units, gain=np.sqrt(2), lrmul=1.0, add_bias=True):
+    def prepare_weights(in_features, out_features):
+        he_std = gain / tf.sqrt(tf.to_float(in_features))  # He init
+        init_std = 1.0 / lrmul
+        runtime_coef = he_std * lrmul
+        weight = tf.get_variable('weight', shape=[in_features, out_features], dtype=x.dtype,
+                                 initializer=tf.initializers.random_normal(0, init_std)) * runtime_coef
+        return weight
+
+    with tf.variable_scope('equalized_dense'):
+        x = tf.layers.flatten(x)
+        w = prepare_weights(x.shape[1], units)
+        x = tf.matmul(x, w)
+        if add_bias:
+            x = apply_bias(x, units, lrmul)
+    return x
+
+
+def equalized_conv2d(x, features, kernels, gain=np.sqrt(2), lrmul=1.0, add_bias=False):
     def prepare_weights(k, in_features, out_features):
-        # he_std = gain / np.sqrt(k * k * in_features)  # He init
         he_std = gain / tf.sqrt(tf.to_float(k * k * in_features))  # He init
         init_std = 1.0 / lrmul
         runtime_coef = he_std * lrmul
-
         weight = tf.get_variable('weight', shape=[k, k, in_features, out_features], dtype=x.dtype,
                                  initializer=tf.initializers.random_normal(0, init_std)) * runtime_coef
         return weight
@@ -38,33 +43,21 @@ def equalized_conv2d(x, features, kernels, gain=np.sqrt(2), lrmul=1.0):
     with tf.variable_scope('equalized_conv2d'):
         w = prepare_weights(kernels, x.shape[1], features)
         x = tf.nn.conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME', data_format='NCHW')
+        if add_bias:
+            x = apply_bias(x, features, lrmul)
     return x
-
-
-# def add_bias(x, lrmul=1):
-#     bias = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype, initializer=tf.initializers.zeros()) * lrmul
-#     x = x + tf.reshape(bias, [1, -1, 1, 1])
-#     return x
 
 
 def to_rgb(x):
     with tf.variable_scope('to_rgb'):
-        lrmul = 1.0
-        x = equalized_conv2d(x, features=3, kernels=1, gain=1.0, lrmul=lrmul)
-        bias = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype, initializer=tf.initializers.zeros()) * lrmul
-        x = x + tf.reshape(bias, [1, -1, 1, 1])
+        x = equalized_conv2d(x, features=3, kernels=1, gain=1.0, lrmul=1.0, add_bias=True)
     return x
 
 
 def from_rgb(x, res, n_f):
     with tf.variable_scope('{:d}x{:d}'.format(res, res)):
         with tf.variable_scope('from_rgb'):
-            lrmul = 1.0
-            x = equalized_conv2d(x, features=n_f, kernels=1, gain=np.sqrt(2), lrmul=lrmul)
-            bias = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype,
-                                   initializer=tf.initializers.zeros()) * lrmul
-            x = x + tf.reshape(bias, [1, -1, 1, 1])
-            x = tf.nn.leaky_relu(x)
+            x = equalized_conv2d(x, features=n_f, kernels=1, gain=np.sqrt(2), lrmul=1.0, add_bias=True)
     return x
 
 
@@ -91,21 +84,21 @@ def instance_norm(x, epsilon=1e-8):
 # a module: adaptive instance norm 2
 def style_mod(x, w):
     with tf.variable_scope('style_mod'):
-        style = equalized_dense(w, x.shape[1]*2, gain=1.0, lrmul=1.0)
+        style = equalized_dense(w, x.shape[1]*2, gain=1.0, lrmul=1.0, add_bias=True)
         style = tf.reshape(style, [-1, 2, x.shape[1]] + [1] * (len(x.shape) - 2))
         style = x * (style[:, 0] + 1) + style[:, 1]
     return style
 
 
 # b module
-def add_noise(x, noise):
+def add_noise(x, noise, add_bias=True):
     with tf.variable_scope('add_noise'):
         channels = x.shape[1]   # tf.shape(x)[1]
-        weight = tf.get_variable('weight', shape=[channels], dtype=x.dtype,
-                                 initializer=tf.initializers.zeros())
-        bias = tf.get_variable('bias', shape=[channels],
-                               initializer=tf.initializers.zeros())
-        x = x + noise * tf.reshape(weight, [1, -1, 1, 1]) + tf.reshape(bias, [1, -1, 1, 1])
+        weight = tf.get_variable('weight', shape=[channels], dtype=x.dtype, initializer=tf.initializers.zeros())
+        x = x + noise * tf.reshape(weight, [1, -1, 1, 1])
+
+        if add_bias:
+            x = apply_bias(x, channels, lrmul=1.0)
     return x
 
 
@@ -129,7 +122,7 @@ def mapping_network(z, w_dim=512, n_mapping=8):
         # run through mapping network
         for ii in range(n_mapping):
             with tf.variable_scope('layer_{:d}'.format(ii)):
-                x = equalized_dense(x, w_dim, gain=np.sqrt(2), lrmul=0.01)
+                x = equalized_dense(x, w_dim, gain=np.sqrt(2), lrmul=0.01, add_bias=True)
                 x = tf.nn.leaky_relu(x)
                 x = tf.identity(x, name='w')
     return x
@@ -138,16 +131,16 @@ def mapping_network(z, w_dim=512, n_mapping=8):
 def synthesis_block(x, w0, w1, noise_image0, noise_image1, n_f):
     with tf.variable_scope('conv0'):
         x = upscale2d(x)
-        x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=1.0)
+        x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=1.0, add_bias=False)
         x = blur2d(x, [1, 2, 1])
-        x = add_noise(x, noise_image0)
+        x = add_noise(x, noise_image0, add_bias=True)
         x = tf.nn.leaky_relu(x)
         x = instance_norm(x)
         x = style_mod(x, w0)
 
     with tf.variable_scope('conv1'):
-        x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=1.0)
-        x = add_noise(x, noise_image1)
+        x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=1.0, add_bias=False)
+        x = add_noise(x, noise_image1, add_bias=True)
         x = tf.nn.leaky_relu(x)
         x = instance_norm(x)
         x = style_mod(x, w1)
@@ -166,15 +159,15 @@ def synthesis_network(w_broadcast, noise_images, alpha, resolutions, featuremaps
             layer_index = 0
             x = tf.get_variable('const', shape=[1, n_f, 4, 4], dtype=dtype, initializer=tf.initializers.ones())
             x = tf.tile(x, [batch_size, 1, 1, 1])
-            x = add_noise(x, noise_images[layer_index])
+            x = add_noise(x, noise_images[layer_index], add_bias=True)
             x = tf.nn.leaky_relu(x)
             x = instance_norm(x)
             x = style_mod(x, w_broadcast[layer_index])
 
         with tf.variable_scope('conv'):
             layer_index = 1
-            x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=1.0)
-            x = add_noise(x, noise_images[layer_index])
+            x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=1.0, add_bias=False)
+            x = add_noise(x, noise_images[layer_index], add_bias=True)
             x = tf.nn.leaky_relu(x)
             x = instance_norm(x)
             x = style_mod(x, w_broadcast[layer_index])
@@ -228,21 +221,18 @@ def generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps):
     return fake_images
 
 
-def discriminator_block(x, res, n_features1, n_features2):
+def discriminator_block(x, res, n_f, n_f_next):
     lrmul = 1.0
     with tf.variable_scope('{:d}x{:d}'.format(res, res)):
         with tf.variable_scope('conv0'):
-            x = equalized_conv2d(x, n_features1, kernels=3, gain=np.sqrt(2), lrmul=lrmul)
-            bias0 = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype, initializer=tf.initializers.zeros()) * lrmul
-            x = x + tf.reshape(bias0, [1, -1, 1, 1])
+            x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=lrmul, add_bias=True)
             x = tf.nn.leaky_relu(x)
 
         with tf.variable_scope('conv1'):
             x = blur2d(x, [1, 2, 1])
-            x = equalized_conv2d(x, n_features2, kernels=3, gain=np.sqrt(2), lrmul=lrmul)
+            x = equalized_conv2d(x, n_f_next, kernels=3, gain=np.sqrt(2), lrmul=lrmul, add_bias=False)
             x = downscale2d(x)
-            bias1 = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype, initializer=tf.initializers.zeros()) * lrmul
-            x = x + tf.reshape(bias1, [1, -1, 1, 1])
+            x = apply_bias(x, n_f_next, lrmul=lrmul)
             x = tf.nn.leaky_relu(x)
     return x
 
@@ -279,23 +269,37 @@ def discriminator(image, alpha, resolutions, featuremaps):
         with tf.variable_scope('{:d}x{:d}'.format(res, res)):
             x = minibatch_stddev_layer(x, group_size=4, num_new_features=1)
             with tf.variable_scope('conv0'):
-                x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=lrmul)
-                bias = tf.get_variable('bias', shape=[x.shape[1]], dtype=x.dtype,
-                                       initializer=tf.initializers.zeros()) * lrmul
-                x = x + tf.reshape(bias, [1, -1, 1, 1])
+                x = equalized_conv2d(x, n_f, kernels=3, gain=np.sqrt(2), lrmul=lrmul, add_bias=True)
                 x = tf.nn.leaky_relu(x)
             with tf.variable_scope('dense1'):
-                x = equalized_dense(x, n_f, gain=np.sqrt(2), lrmul=1.0)
+                x = equalized_dense(x, n_f, gain=np.sqrt(2), lrmul=1.0, add_bias=True)
                 x = tf.nn.leaky_relu(x)
             with tf.variable_scope('dense2'):
-                x = equalized_dense(x, 1, gain=1.0, lrmul=1.0)
+                x = equalized_dense(x, 1, gain=1.0, lrmul=1.0, add_bias=True)
                 x = tf.nn.leaky_relu(x)
 
         scores_out = tf.identity(x, name='scores_out')
     return scores_out
 
 
+# def test_inference_with_official_model():
+#     import os
+#     import pickle
+#
+#     model_dir = '../official-pretrained'
+#     pkl_name = '263e666dc20e26dcbfa514733c1d1f81_karras2019stylegan-ffhq-1024x1024.pkl'
+#     model_pkl = os.path.join(model_dir, pkl_name)
+#
+#     with open(model_pkl, 'rb') as f:
+#         _G, _D, Gs = pickle.load(f)
+#
+#     print()
+#     return
+
+
 def main():
+    # test_inference_with_official_model()
+
     # prepare generator variables
     z_dim = 512
     w_dim = 512
@@ -318,9 +322,25 @@ def main():
     fake_images = generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps)
     d_score = discriminator(fake_images, alpha, resolutions, featuremaps)
 
-    t_var = tf.trainable_variables()
-    import pprint
-    pprint.pprint(t_var)
+    # import pprint
+    # t_var = tf.trainable_variables()
+    # pprint.pprint(t_var)
+    #
+    # # vvars = list()
+    # # for n in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
+    # #     shape = [n.shape.dims[ii].value for ii in range(n.shape.ndims)]
+    # #     vvars.append((n.name, shape, n.trainable))
+    #
+    # vvars = list()
+    # for v in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
+    #     if not v.trainable:
+    #         vvars.append(v)
+    #     # shape = [n.shape.dims[ii].value for ii in range(n.shape.ndims)]
+    #     # vvars.append((n.name, shape, n.trainable))
+    #
+    # # vvars = [v for v in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)]
+    # pprint.pprint(vvars)
+
     return
 
 
