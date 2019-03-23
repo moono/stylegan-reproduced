@@ -15,7 +15,7 @@ def apply_bias(x, units, lrmul=1.0):
 
 def equalized_dense(x, units, gain=np.sqrt(2), lrmul=1.0, add_bias=True):
     def prepare_weights(in_features, out_features):
-        he_std = gain / tf.sqrt(tf.to_float(in_features))  # He init
+        he_std = gain / tf.sqrt(tf.cast(in_features, dtype=tf.float32))  # He init
         init_std = 1.0 / lrmul
         runtime_coef = he_std * lrmul
         weight = tf.get_variable('weight', shape=[in_features, out_features], dtype=x.dtype,
@@ -23,7 +23,7 @@ def equalized_dense(x, units, gain=np.sqrt(2), lrmul=1.0, add_bias=True):
         return weight
 
     with tf.variable_scope('equalized_dense'):
-        x = tf.layers.flatten(x)
+        x = tf.reshape(x, shape=[-1, x.shape[1]])
         w = prepare_weights(x.shape[1], units)
         x = tf.matmul(x, w)
         if add_bias:
@@ -33,7 +33,7 @@ def equalized_dense(x, units, gain=np.sqrt(2), lrmul=1.0, add_bias=True):
 
 def equalized_conv2d(x, features, kernels, gain=np.sqrt(2), lrmul=1.0, add_bias=False):
     def prepare_weights(k, in_features, out_features):
-        he_std = gain / tf.sqrt(tf.to_float(k * k * in_features))  # He init
+        he_std = gain / tf.sqrt(tf.cast(k * k * in_features, dtype=tf.float32))  # He init
         init_std = 1.0 / lrmul
         runtime_coef = he_std * lrmul
         weight = tf.get_variable('weight', shape=[k, k, in_features, out_features], dtype=x.dtype,
@@ -282,24 +282,24 @@ def discriminator(image, alpha, resolutions, featuremaps):
     return scores_out
 
 
-# def test_inference_with_official_model():
-#     import os
-#     import pickle
-#
-#     model_dir = '../official-pretrained'
-#     pkl_name = '263e666dc20e26dcbfa514733c1d1f81_karras2019stylegan-ffhq-1024x1024.pkl'
-#     model_pkl = os.path.join(model_dir, pkl_name)
-#
-#     with open(model_pkl, 'rb') as f:
-#         _G, _D, Gs = pickle.load(f)
-#
-#     print()
-#     return
+def print_variables():
+    import pprint
+
+    t_vars = tf.trainable_variables()
+    nt_vars = list()
+    for v in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
+        if not v.trainable:
+            nt_vars.append(v)
+
+    print('Non-Trainable')
+    pprint.pprint(nt_vars)
+
+    print('Trainable')
+    pprint.pprint(t_vars)
+    return
 
 
 def main():
-    # test_inference_with_official_model()
-
     # prepare generator variables
     z_dim = 512
     w_dim = 512
@@ -322,24 +322,7 @@ def main():
     fake_images = generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps)
     d_score = discriminator(fake_images, alpha, resolutions, featuremaps)
 
-    # import pprint
-    # t_var = tf.trainable_variables()
-    # pprint.pprint(t_var)
-    #
-    # # vvars = list()
-    # # for n in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
-    # #     shape = [n.shape.dims[ii].value for ii in range(n.shape.ndims)]
-    # #     vvars.append((n.name, shape, n.trainable))
-    #
-    # vvars = list()
-    # for v in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
-    #     if not v.trainable:
-    #         vvars.append(v)
-    #     # shape = [n.shape.dims[ii].value for ii in range(n.shape.ndims)]
-    #     # vvars.append((n.name, shape, n.trainable))
-    #
-    # # vvars = [v for v in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)]
-    # pprint.pprint(vvars)
+    print_variables()
 
     return
 
