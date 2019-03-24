@@ -196,7 +196,39 @@ def synthesis_network(w_broadcast, noise_images, alpha, resolutions, featuremaps
     return image_out
 
 
-def generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps):
+def update_moving_average_of_w(w_broadcasted, w_dim, moving_avg_beta):
+    with tf.variable_scope('moving_average_w'):
+        w_moving_avg = tf.get_variable('w_moving_avg', shape=[w_dim], initializer=tf.initializers.zeros(),
+                                       trainable=False)
+        w_link = w_broadcasted[0]
+        batch_avg = tf.reduce_mean(w_link, axis=0)
+        update_op = tf.assign(w_moving_avg, batch_avg + (w_moving_avg - batch_avg) * moving_avg_beta)
+        with tf.control_dependencies([update_op]):
+            w_link = tf.identity(w_link)
+    return
+
+
+def style_mixing(z, w_dim, n_mapping, n_layers):
+    with tf.name_scope('StyleMix'):
+        z2 = tf.random_normal(tf.shape(z))
+        w2 = mapping_network(z, w_dim, n_mapping)
+        layer_idx = np.arange(n_layers)[np.newaxis, :, np.newaxis]
+        cur_layers = n_layers - tf.cast(lod_in, tf.int32) * 2
+        mixing_cutoff = tf.cond(
+            tf.random_uniform([], 0.0, 1.0) < style_mixing_prob,
+            lambda: tf.random_uniform([], 1, cur_layers, dtype=tf.int32),
+            lambda: cur_layers)
+        dlatents = tf.where(tf.broadcast_to(layer_idx < mixing_cutoff, tf.shape(dlatents)), dlatents, dlatents2)
+    return
+
+
+def generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps, is_training):
+    moving_avg_beta = 0.995     # decay for tracking the moving average of W during training
+    style_mixing_prob = 0.9     # probability of mixing styles during training
+    if not is_training:
+        moving_avg_beta = None
+        style_mixing_prob = None
+
     with tf.variable_scope('generator'):
         # prepare inputs
         dtype = tf.float32  # w.dtype
@@ -207,6 +239,14 @@ def generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps):
         # run through mapping network and broadcast to n_layers
         w = mapping_network(z, w_dim, n_mapping)
         w_broadcasted = w_broadcaster(w, w_dim, n_layers)
+
+        # update moving average of w
+        if moving_avg_beta is not None:
+            update_moving_average_of_w(w_broadcasted, w_dim, moving_avg_beta)
+
+        # Perform style mixing regularization.
+        if style_mixing_prob is not None:
+            style_mixing()
 
         # create noise images: noise
         noise_images = list()
@@ -304,6 +344,7 @@ def main():
     z_dim = 512
     w_dim = 512
     n_mapping = 8
+    is_training = True
     # final_output_resolution = 1024
     # resolution_log2 = int(np.log2(float(final_output_resolution)))
     # resolutions = [2 ** (power + 1) for power in range(1, resolution_log2)]
@@ -319,7 +360,7 @@ def main():
 
     z = tf.placeholder(tf.float32, shape=[None, z_dim], name='z')
     alpha = tf.Variable(initial_value=0.0, trainable=False, name='transition_alpha')
-    fake_images = generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps)
+    fake_images = generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps, is_training)
     d_score = discriminator(fake_images, alpha, resolutions, featuremaps)
 
     print_variables()
