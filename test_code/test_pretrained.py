@@ -267,63 +267,6 @@ my_g_mapping = [
 ]
 
 
-def test_mapping_network_only():
-    import pickle
-    from network.stylegan import mapping_network, w_broadcaster
-
-    # prepare generator variables
-    is_training = False
-    z_dim = 512
-    w_dim = 512
-    n_mapping = 8
-    resolutions = [4, 8, 16, 32, 64, 128, 256, 512, 1024]
-    featuremaps = [512, 512, 512, 512, 256, 128, 64, 32, 16]
-
-    z = tf.placeholder(tf.float32, shape=[None, z_dim], name='z')
-    alpha = tf.Variable(initial_value=0.0, trainable=False, name='transition_alpha')
-
-    with tf.variable_scope('generator'):
-        # prepare inputs
-        dtype = tf.float32  # w.dtype
-        batch_size = tf.shape(z)[0]
-        n_layers = len(resolutions) * 2
-
-        # disentangled latents: w
-        # run through mapping network and broadcast to n_layers
-        w = mapping_network(z, w_dim, n_mapping)
-        w_broadcasted = w_broadcaster(w, w_dim, n_layers)
-
-    model_dir = './official-pretrained'
-    ckpt_name = 'model.ckpt'
-    model_ckpt = os.path.join(model_dir, ckpt_name)
-
-    t_vars = tf.trainable_variables()
-    var_list = dict()
-
-    for official, mine in zip(official_code_g_mapping_t_vars, my_g_mapping):
-        skimmed_official = official.split(':')[0]
-        for v in t_vars:
-            if v.name == mine:
-                var_list[skimmed_official] = v
-                break
-
-    saver = tf.train.Saver(var_list=var_list)
-
-    rnd = np.random.RandomState(5)
-    z_input_np = rnd.randn(1, z_dim)
-    drange_min, drange_max = -1.0, 1.0
-    scale = 255.0 / (drange_max - drange_min)
-
-    with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
-        saver.restore(sess, model_ckpt)
-
-        output = sess.run(w, feed_dict={z: z_input_np})
-
-        print(output.shape)
-    return
-
-
 def test_generator():
     # prepare generator variables
     is_training = False
@@ -382,8 +325,7 @@ def test_generator():
 
 
 def main():
-    test_mapping_network_only()
-    # test_generator()
+    test_generator()
     return
 
 

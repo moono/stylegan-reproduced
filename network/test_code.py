@@ -189,12 +189,75 @@ def test4():
     return
 
 
+def w_broadcaster(w, w_dim, n_layers):
+    w_broadcast = list()
+    with tf.variable_scope('broadcast'):
+        w_tiled = tf.reshape(w, shape=[-1, 1, w_dim])
+        w_tiled = tf.tile(w_tiled, [1, n_layers, 1])
+        for layer_index in range(n_layers):
+            current_layer = w_tiled[:, layer_index]
+            current_layer = tf.reshape(current_layer, shape=[-1, w_dim], name='w_{:d}'.format(layer_index))
+            w_broadcast.append(current_layer)
+    return w_broadcast
+
+
+def test5():
+    w = tf.Variable(0, dtype=tf.float32)
+    w_broadcasted = w_broadcaster(w, 1, 2)
+    ema = tf.train.ExponentialMovingAverage(decay=0.9)
+    m = ema.apply([w])
+    av = ema.average(w)
+
+    x = tf.placeholder(tf.float32, [None])
+    y = tf.placeholder(tf.float32, [None])
+    y_ = tf.multiply(x, w)
+
+    with tf.control_dependencies([m]):
+        # w_broadcasted[0] = tf.identity(w_broadcasted[0])
+        loss = tf.reduce_sum(tf.square(tf.subtract(y, y_)))
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
+        train = optimizer.minimize(loss)
+
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        for i in range(100):
+            _, w_, av_, w0, w1 = sess.run([train, w, av, w_broadcasted[0], w_broadcasted[1]], feed_dict={x: [1], y: [10]})
+
+            if i % 10 == 0:
+                print(i, ': ', w_, ',', av_, ',', w0, ',', w1)
+    return
+
+
+def test6():
+    w = tf.Variable(0, dtype=tf.float32)
+
+    x = tf.placeholder(tf.float32, [None])
+    y = tf.placeholder(tf.float32, [None])
+    y_ = tf.multiply(x, w)
+
+    loss = tf.reduce_sum(tf.square(tf.subtract(y, y_)))
+    optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.1)
+    train = optimizer.minimize(loss)
+
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        for i in range(100):
+            _, w_ = sess.run([train, w], feed_dict={x: [1], y: [10]})
+
+            if i % 10 == 0:
+                print(i, ': ', w_)
+    return
+
+
+
 def main():
-    test0()
+    # test0()
     # test1()
     # test2()
     # test3()
     # test4()
+    test5()
+    # test6()
     return
 
 
