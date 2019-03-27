@@ -349,8 +349,10 @@ def G_style(latents_in, is_training=False):
     dlatent_size = 512
     # lod_in = tf.get_variable('lod', initializer=np.float32(0), trainable=False)
     lod_in = tf.constant(0.0, dtype=tf.float32)
-    # dlatent_avg = tf.get_variable('dlatent_avg', shape=[dlatent_size], initializer=tf.initializers.zeros(),
-    #                               trainable=False)
+
+    with tf.variable_scope('Gs'):
+        dlatent_avg = tf.get_variable('dlatent_avg', shape=[dlatent_size], initializer=tf.initializers.zeros(),
+                                      trainable=False)
 
     with tf.variable_scope('G_mapping'):
         dlatents = G_mapping(latents_in)
@@ -377,13 +379,13 @@ def G_style(latents_in, is_training=False):
     #             lambda: cur_layers)
     #         dlatents = tf.where(tf.broadcast_to(layer_idx < mixing_cutoff, tf.shape(dlatents)), dlatents, dlatents2)
 
-    # # Apply truncation trick.
-    # if truncation_psi is not None and truncation_cutoff is not None:
-    #     with tf.variable_scope('Truncation'):
-    #         layer_idx = np.arange(num_layers)[np.newaxis, :, np.newaxis]
-    #         ones = np.ones(layer_idx.shape, dtype=np.float32)
-    #         coefs = tf.where(layer_idx < truncation_cutoff, truncation_psi * ones, ones)
-    #         dlatents = lerp(dlatent_avg, dlatents, coefs)
+    # Apply truncation trick.
+    if truncation_psi is not None and truncation_cutoff is not None:
+        with tf.variable_scope('Truncation'):
+            layer_idx = np.arange(num_layers)[np.newaxis, :, np.newaxis]
+            ones = np.ones(layer_idx.shape, dtype=np.float32)
+            coefs = tf.where(layer_idx < truncation_cutoff, truncation_psi * ones, ones)
+            dlatents = lerp(dlatent_avg, dlatents, coefs)
 
     with tf.variable_scope('G_synthesis'):
         images_out = G_synthesis(dlatents, lod_in)
