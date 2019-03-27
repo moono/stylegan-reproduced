@@ -109,3 +109,6 @@ venv.bak/
 # large files
 *.pkl
 official-pretrained/
+
+# image file
+*.png
