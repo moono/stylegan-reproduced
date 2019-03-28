@@ -11,7 +11,7 @@ from network.common_ops import (
 
 
 def g_mapping(z, w_dim, n_mapping, n_broadcast):
-    with tf.variable_scope('g_mapping', reuse=tf.AUTO_REUSE):
+    with tf.variable_scope('g_mapping'):
         gain = np.sqrt(2)
         lrmul = 0.01
 
@@ -80,7 +80,7 @@ def g_synthesis(w_broadcasted, alpha, resolutions, featuremaps):
     assert len(resolutions) == len(featuremaps)
 
     # there is 2-layers each in every reolution
-    with tf.variable_scope('g_synthesis', reuse=tf.AUTO_REUSE):
+    with tf.variable_scope('g_synthesis'):
         lods = list(range(len(resolutions) - 1, -1, -1))
 
         # initial layer

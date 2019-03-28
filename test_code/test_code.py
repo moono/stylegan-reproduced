@@ -1,8 +1,6 @@
 import numpy as np
 import tensorflow as tf
 
-from network.stylegan import generator, mapping_network, synthesis_network
-
 
 def test0():
     def nf(stage):
@@ -50,6 +48,8 @@ def test1():
 
 
 def test2():
+    from network.stylegan import g_mapping
+
     # prepare generator variables
     batch_size = 32
     z_dim = 512
@@ -59,10 +59,11 @@ def test2():
     final_output_resolution = 1024
     resolution_log2 = int(np.log2(final_output_resolution))
     resolutions = [2 ** (power + 1) for power in range(1, resolution_log2)]
+    n_broadcast = len(resolutions) * 2
 
     z = tf.random_normal(shape=[batch_size, z_dim], dtype=tf.float32, name='latent_z')
     # z = tf.placeholder(tf.float32, shape=[None, z_dim], name='z')
-    w = mapping_network(z, w_dim, n_mapping)
+    w = g_mapping(z, w_dim, n_mapping, n_broadcast)
 
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
@@ -249,6 +250,17 @@ def test6():
     return
 
 
+def test7():
+    def create_variable():
+        with tf.variable_scope("foo", reuse=tf.AUTO_REUSE):
+            with tf.variable_scope("bar"):
+                v = tf.get_variable("v", [1])
+        return v
+
+    v1 = create_variable()
+    v2 = create_variable()
+    return
+
 
 def main():
     # test0()
@@ -256,8 +268,9 @@ def main():
     # test2()
     # test3()
     # test4()
-    test5()
+    # test5()
     # test6()
+    test7()
     return
 
 

@@ -147,7 +147,8 @@ def test_generator():
     featuremaps = [512, 512, 512, 512, 256, 128, 64, 32, 16]
 
     z = tf.placeholder(tf.float32, shape=[None, z_dim], name='z')
-    alpha = tf.Variable(initial_value=0.0, trainable=False, name='transition_alpha')
+    # alpha = tf.Variable(initial_value=0.0, trainable=False, name='transition_alpha')
+    alpha = tf.constant(0.0, dtype=tf.float32)
     fake_images = generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps, is_training)
 
     model_dir = './official-pretrained'
