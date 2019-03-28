@@ -79,6 +79,7 @@ def test2():
 
 
 def test3():
+    import os
     import pprint
     import pickle
 
@@ -135,10 +136,33 @@ def test3():
 
     # diff = 0.00010666666666647728
 
+    # # save only_diff
+    # cur_img = 0
+    # sched = training_schedule(cur_img)
+    # lod = sched['lod']
+    # pprint.pprint(sched)
+    #
+    # resolution = list()
+    # lod_list = list()
+    # epochs = 1000
+    # while cur_img < 70000 * epochs:
+    #     cur_img += sched['minibatch']
+    #     sched = training_schedule(cur_img)
+    #     if lod != sched['lod']:
+    #         lod_list.append(sched['lod'])
+    #         resolution.append(sched['resolution'])
+    #
+    #         lod = sched['lod']
+    #
+    # out_dir_base = './debug_files'
+    # with open(os.path.join(out_dir_base, 'schedule_ex_lod.pkl'), 'wb') as f:
+    #     pickle.dump(lod_list, f)
+    # with open(os.path.join(out_dir_base, 'schedule_ex_res.pkl'), 'wb') as f:
+    #     pickle.dump(resolution, f)
+
+    # save all
     cur_img = 0
     sched = training_schedule(cur_img)
-    lod = sched['lod']
-    pprint.pprint(sched)
 
     resolution = list()
     lod_list = list()
@@ -146,27 +170,27 @@ def test3():
     while cur_img < 70000 * epochs:
         cur_img += sched['minibatch']
         sched = training_schedule(cur_img)
-        if lod != sched['lod']:
-            lod_list.append(sched['lod'])
-            resolution.append(sched['resolution'])
+        lod_list.append(sched['lod'])
+        resolution.append(sched['resolution'])
 
-            lod = sched['lod']
-
-    with open('schedule_ex_lod.pkl', 'wb') as f:
+    out_dir_base = './debug_files'
+    with open(os.path.join(out_dir_base, 'schedule_ex_lod.pkl'), 'wb') as f:
         pickle.dump(lod_list, f)
-    with open('schedule_ex_res.pkl', 'wb') as f:
+    with open(os.path.join(out_dir_base, 'schedule_ex_res.pkl'), 'wb') as f:
         pickle.dump(resolution, f)
 
     return
 
 
 def test4():
+    import os
     import pickle
     import matplotlib.pyplot as plt
 
-    with open('schedule_ex_lod.pkl', 'rb') as f:
+    out_dir_base = './debug_files'
+    with open(os.path.join(out_dir_base, 'schedule_ex_lod.pkl'), 'rb') as f:
         lod_list = pickle.load(f)
-    with open('schedule_ex_res.pkl', 'rb') as f:
+    with open(os.path.join(out_dir_base, 'schedule_ex_res.pkl'), 'rb') as f:
         resolution = pickle.load(f)
 
     unique_res, unique_res_indices = np.unique(np.array(resolution), return_index=True)
@@ -315,8 +339,78 @@ def test9():
     return
 
 
+def test10():
+    import os
+    import pickle
+
+    out_dir_base = './debug_files'
+    with open(os.path.join(out_dir_base, 'schedule_ex_lod.pkl'), 'rb') as f:
+        lod_list = pickle.load(f)
+
+    for lod in lod_list:
+        temp = np.floor(lod)
+        if int(temp) >= 6:
+            print(lod)
+        else:
+            break
+
+    return
+
+
+def test11():
+    from network.common_ops import lerp
+
+    def adjust_dynamic_range(images):
+        drange_in = [0.0, 255.0]
+        drange_out = [-1.0, 1.0]
+        scale = (drange_out[1] - drange_out[0]) / (drange_in[1] - drange_in[0])
+        bias = drange_out[0] - drange_in[0] * scale
+        images = images * scale + bias
+        return images
+
+    def random_flip_left_right_nchw(images):
+        s = tf.shape(images)
+        mask = tf.random_uniform([s[0], 1, 1, 1], 0.0, 1.0)
+        mask = tf.tile(mask, [1, s[1], s[2], s[3]])
+        images = tf.where(mask < 0.5, images, tf.reverse(images, axis=[3]))
+        return images
+
+    def smooth_crossfade(images, alpha):
+        s = tf.shape(images)
+        y = tf.reshape(images, [-1, s[1], s[2] // 2, 2, s[3] // 2, 2])
+        y = tf.reduce_mean(y, axis=[3, 5], keepdims=True)
+        y = tf.tile(y, [1, 1, 1, 2, 1, 2])
+        y = tf.reshape(y, [-1, s[1], s[2], s[3]])
+        images = lerp(images, y, alpha)
+        return images
+
+    def upscale_to_res(images, lod):
+        s = tf.shape(images)
+        factor = tf.cast(2 ** tf.floor(lod), tf.int32)
+        images = tf.reshape(images, [-1, s[1], s[2], 1, s[3], 1])
+        images = tf.tile(images, [1, 1, 1, factor, 1, factor])
+        images = tf.reshape(images, [-1, s[1], s[2] * factor, s[3] * factor])
+        return images
+
+    temp_image = tf.constant(1.0, dtype=tf.float32, shape=[1, 3, 8, 8])
+    alpha = 0.0
+    lod_in = 7.0
+
+    out_images = adjust_dynamic_range(temp_image)
+    out_images = random_flip_left_right_nchw(out_images)
+    out_images = smooth_crossfade(out_images, alpha)
+    out_images = upscale_to_res(out_images, lod_in)
+
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+
+        out = sess.run(out_images)
+        print(out.shape)
+    return
+
+
 def main():
-    test0()
+    # test0()
     # test1()
     # test2()
     # test3()
@@ -326,6 +420,8 @@ def main():
     # test7()
     # test8()
     # test9()
+    # test10()
+    test11()
     return
 
 
