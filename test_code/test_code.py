@@ -9,7 +9,7 @@ def test0():
         fmap_max = 512
         return min(int(fmap_base / (2.0 ** (stage * fmap_decay))), fmap_max)
 
-    for res in range(2, 11):
+    for res in range(1, 11):
         out_nf = nf(res - 1)
         print('res: {}, nf: {}'.format(res, out_nf))
     return
@@ -262,15 +262,70 @@ def test7():
     return
 
 
+def test8():
+    from network.common_ops_v2 import lerp
+
+    w_dim = 5
+    n_broadcast = 18
+    truncation_psi = 0.7
+    truncation_cutoff = 8
+    w_broadcasted = tf.constant(1.0, dtype=tf.float32, shape=[1, n_broadcast, w_dim])
+    w_avg = tf.constant(0.5, dtype=tf.float32, shape=[w_dim])
+
+    layer_idx = np.arange(n_broadcast)[np.newaxis, :, np.newaxis]
+    ones = np.ones(layer_idx.shape, dtype=np.float32)
+    coefs = tf.where(layer_idx < truncation_cutoff, truncation_psi * ones, ones)
+    w_broadcasted = lerp(w_avg, w_broadcasted, coefs)
+
+    print('layer_idx: {}'.format(layer_idx))
+    print('ones: {}'.format(ones))
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+
+        coefs_out, out = sess.run([coefs, w_broadcasted])
+        print(coefs_out)
+        print(out)
+    return
+
+
+def test9():
+    style_mixing_prob = 0.9
+    n_broadcast = 18
+    cur_layers = 7
+
+    w_dim = 5
+    lod_in = tf.constant(1.0, dtype=tf.float32)
+    w_broadcasted1 = tf.constant(1.0, dtype=tf.float32, shape=[1, n_broadcast, w_dim])
+    w_broadcasted2 = tf.constant(0.5, dtype=tf.float32, shape=[1, n_broadcast, w_dim])
+
+    layer_idx = np.arange(n_broadcast)[np.newaxis, :, np.newaxis]
+    mixing_cutoff = tf.cond(
+        tf.random_uniform([], 0.0, 1.0) < style_mixing_prob,
+        lambda: tf.random_uniform([], 1, cur_layers, dtype=tf.int32),
+        lambda: cur_layers)
+    w_broadcasted1 = tf.where(tf.broadcast_to(layer_idx < mixing_cutoff, tf.shape(w_broadcasted1)), w_broadcasted1, w_broadcasted2)
+
+    print('layer_idx: {}'.format(layer_idx))
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+
+        mixing_cutoffout, out = sess.run([mixing_cutoff, w_broadcasted1])
+        print(mixing_cutoffout)
+        print(out)
+    return
+
+
 def main():
-    # test0()
+    test0()
     # test1()
     # test2()
     # test3()
     # test4()
     # test5()
     # test6()
-    test7()
+    # test7()
+    # test8()
+    # test9()
     return
 
 
