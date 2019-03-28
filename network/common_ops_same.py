@@ -1,12 +1,12 @@
 import numpy as np
 import tensorflow as tf
 
-from network.official_code_ops import upscale2d, downscale2d
+from network.official_code_ops import upscale2d
 
 
 def get_weight(weight_shape, gain, lrmul):
-    fan_in = np.prod(weight_shape[:-1])  # [kernel, kernel, fmaps_in, fmaps_out] or [in, out]
-    he_std = gain / np.sqrt(fan_in)  # He init
+    fan_in = np.prod(weight_shape[:-1])     # [kernel, kernel, fmaps_in, fmaps_out] or [in, out]
+    he_std = gain / np.sqrt(fan_in)         # He init
 
     # equalized learning rate
     init_std = 1.0 / lrmul
@@ -54,28 +54,6 @@ def upscale2d_conv2d(x, fmaps, kernel, gain, lrmul):
     weight = tf.add_n([weight[1:, 1:], weight[:-1, 1:], weight[1:, :-1], weight[:-1, :-1]])
     output_shape = [batch_size, fmaps, height * 2, width * 2]
     x = tf.nn.conv2d_transpose(x, weight, output_shape, strides=[1, 1, 2, 2], padding='SAME', data_format='NCHW')
-    return x
-
-
-# conv2d & downscale for resolution lower than 128
-# conv2d with downscale for reolution higher than 128
-def conv2d_downscale2d(x, fmaps, kernel, gain, lrmul):
-    # batch_size = tf.shape(x)[0]
-    height, width = x.shape[2], x.shape[3]
-    fused_scale = (min(height, width) * 2) >= 128
-
-    # Not fused => call the individual ops directly.
-    if not fused_scale:
-        x = equalized_conv2d(x, fmaps, kernel, gain, lrmul)
-        x = downscale2d(x)
-        return x
-
-    # Fused => perform both ops simultaneously using tf.nn.conv2d().
-    w = get_weight([kernel, kernel, x.shape[1].value, fmaps], gain, lrmul)
-    w = tf.pad(w, [[1, 1], [1, 1], [0, 0], [0, 0]], mode='CONSTANT')
-    w = tf.add_n([w[1:, 1:], w[:-1, 1:], w[1:, :-1], w[:-1, :-1]]) * 0.25
-    w = tf.cast(w, x.dtype)
-    x = tf.nn.conv2d(x, w, strides=[1, 1, 2, 2], padding='SAME', data_format='NCHW')
     return x
 
 
@@ -145,6 +123,13 @@ def style_mod(x, w):
 def adaptive_instance_norm(x, w):
     x = instance_norm(x)
     x = style_mod(x, w)
+    return x
+
+
+def torgb(x, lod):
+    with tf.variable_scope('ToRGB_lod{:d}'.format(lod)):
+        x = equalized_conv2d(x, fmaps=3, kernel=1, gain=1.0, lrmul=1.0)
+        x = apply_bias(x, lrmul=1.0)
     return x
 
 

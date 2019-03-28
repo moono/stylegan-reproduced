@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 
 from network.official_code_ops import blur2d, downscale2d, minibatch_stddev_layer
-from network.common_ops_v2 import (
+from network.common_ops import (
     equalized_dense, equalized_conv2d, conv2d_downscale2d, apply_bias,
     lerp_clip
 )

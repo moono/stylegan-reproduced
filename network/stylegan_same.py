@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from utils.utils import print_variables
 from network.official_code_ops import blur2d, upscale2d
-from network.common_ops import (
+from network.common_ops_same import (
     equalized_dense, equalized_conv2d, upscale2d_conv2d, apply_bias, apply_noise,
     pixel_norm, adaptive_instance_norm,
     torgb, lerp, lerp_clip

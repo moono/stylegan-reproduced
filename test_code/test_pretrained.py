@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 import cv2
 
-from network.stylegan import generator
+from network.stylegan_same import generator
 
 
 official_code_g_synthesis_t_vars = [

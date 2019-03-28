@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import tensorflow as tf
-from network.stylegan import generator
+from network.stylegan_same import generator
 
 import cv2
 

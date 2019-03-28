@@ -48,7 +48,7 @@ def test1():
 
 
 def test2():
-    from network.stylegan import g_mapping
+    from network.stylegan_same import g_mapping
 
     # prepare generator variables
     batch_size = 32
@@ -263,7 +263,7 @@ def test7():
 
 
 def test8():
-    from network.common_ops_v2 import lerp
+    from network.common_ops import lerp
 
     w_dim = 5
     n_broadcast = 18
