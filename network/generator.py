@@ -145,7 +145,7 @@ def generator(z, g_params, is_training):
     # set parameters
     w_dim = g_params['w_dim']
     n_mapping = g_params['n_mapping']
-    c_idx = g_params['c_idx']
+    c_res = g_params['c_res']
     w_avg = g_params['w_avg']
     alpha = g_params['alpha']
     resolutions = g_params['resolutions']
@@ -154,6 +154,8 @@ def generator(z, g_params, is_training):
     style_mixing_prob = g_params['style_mixing_prob']
     truncation_psi = g_params['truncation_psi']
     truncation_cutoff = g_params['truncation_cutoff']
+
+    c_idx = resolutions.index(c_res)
 
     # start building layers
     # mapping layers
@@ -191,7 +193,6 @@ def main():
     resolutions = [4, 8, 16, 32, 64, 128, 256, 512, 1024]
     featuremaps = [512, 512, 512, 512, 256, 128, 64, 32, 16]
     c_res = 8
-    c_idx = resolutions.index(c_res)
     alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=zero_init, trainable=False)
     w_avg = tf.get_variable('w_avg', shape=[w_dim], dtype=tf.float32, initializer=zero_init, trainable=False)
     w_ema_decay = 0.995
@@ -203,7 +204,7 @@ def main():
         'z_dim': z_dim,
         'w_dim': w_dim,
         'n_mapping': n_mapping,
-        'c_idx': c_idx,
+        'c_res': c_res,
         'alpha': alpha,
         'w_avg': w_avg,
         'resolutions': resolutions,
