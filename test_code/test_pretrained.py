@@ -151,7 +151,7 @@ def test_generator():
     alpha = tf.constant(0.0, dtype=tf.float32)
     fake_images = generator(z, w_dim, n_mapping, alpha, resolutions, featuremaps, is_training)
 
-    model_dir = './official-pretrained'
+    model_dir = '../official-pretrained'
     ckpt_name = 'model.ckpt'
     model_ckpt = os.path.join(model_dir, ckpt_name)
 
