@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 
 from network.common_ops import lerp
@@ -50,46 +51,120 @@ def preprocess_image(images, res, network_output, alpha):
     return images
 
 
+def compute_smooth_transition_rate(batch_size, global_step, train_trans_images_per_res):
+    n_cur_img = batch_size * global_step
+
+    alpha = 0.0
+    if n_cur_img < train_trans_images_per_res:
+        alpha = float(train_trans_images_per_res - n_cur_img) / train_trans_images_per_res
+    return alpha
+
+
+def filter_trainable_variables(res):
+    res_in_focus = [2 ** r for r in range(int(np.log2(res)), 1, -1)]
+    res_in_focus = res_in_focus[::-1]
+
+    t_vars = tf.trainable_variables()
+    d_vars = list()
+    g_vars = list()
+    for var in t_vars:
+        if var.name.startswith('g_mapping'):
+            g_vars.append(var)
+        elif var.name.startswith('g_synthesis'):
+            for r in res_in_focus:
+                if '{:d}x{:d}'.format(r, r) in var.name:
+                    g_vars.append(var)
+        elif var.name.startswith('discriminator'):
+            for r in res_in_focus:
+                if '{:d}x{:d}'.format(r, r) in var.name:
+                    d_vars.append(var)
+
+    return d_vars, g_vars
+
+
 def model_fn(features, labels, mode, params):
     # parse inputs
-    images = features['images']
-    # n_classes = params['n_classes']
-    is_training = mode == tf.estimator.ModeKeys.TRAIN
+    real_images = features['images']
 
-    global_step = tf.train.get_or_create_global_step()
+    # parse params
+    z_dim = params['z_dim']
+    w_dim = params['w_dim']
+    n_mapping = params['n_mapping']
+    w_ema_decay = params['w_ema_decay']
+    style_mixing_prob = params['style_mixing_prob']
+    truncation_psi = params['truncation_psi']
+    truncation_cutoff = params['truncation_cutoff']
+
     res = params['res']
     final_res = params['final_res']
     resolutions = params['resolutions']
     featuremaps = params['featuremaps']
-    total_images_in_each_dataset = params['total_images_in_each_dataset']
+    total_images = params['total_images']
     train_fixed_images_per_res = params['train_fixed_images_per_res']
     train_trans_images_per_res = params['train_trans_images_per_res']
     batch_size = params['batch_size']
     g_learning_rate = params['g_learning_rate']
     d_learning_rate = params['d_learning_rate']
 
-    images.set_shape([None, 3, res, res])
-    images = preprocess_image(images, res, final_res, alpha=1.0)
+    # w = tf.Variable(0.5, dtype=tf.float32)
+    # x = tf.constant(1, dtype=tf.float32)
+    # y_ = tf.multiply(x, w)
+    # y = tf.constant(1, dtype=tf.float32)
+    #
+    # actual_images = tf.transpose(real_images, perm=[0, 2, 3, 1])
+    # image_shape = tf.shape(actual_images)
+    # tf.summary.scalar('height', image_shape[1])
+    # tf.summary.scalar('width', image_shape[2])
+    # tf.summary.image('images', actual_images[:1])
+
+    # create additional variables & constants
+    z = tf.random_normal(shape=[batch_size, z_dim], dtype=tf.float32)
+    zero_init = tf.initializers.zeros()
+    alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=zero_init, trainable=False)
+    w_avg = tf.get_variable('w_avg', shape=[w_dim], dtype=tf.float32, initializer=zero_init, trainable=False)
+
+    global_step = tf.train.get_or_create_global_step()
+    alpha_const = compute_smooth_transition_rate(batch_size, global_step, train_trans_images_per_res)
+    alpha_assign_op = tf.assign(alpha, alpha_const)
+
+    # preprocess input images
+    real_images.set_shape([None, 3, res, res])
+    real_images = preprocess_image(real_images, res, final_res, alpha=1.0)
     print()
 
-    w = tf.Variable(0.5, dtype=tf.float32)
-    x = tf.constant(1, dtype=tf.float32)
-    y_ = tf.multiply(x, w)
-    y = tf.constant(1, dtype=tf.float32)
-
-    actual_images = tf.transpose(images, perm=[0, 2, 3, 1])
-    image_shape = tf.shape(actual_images)
-    tf.summary.scalar('height', image_shape[1])
-    tf.summary.scalar('width', image_shape[2])
-    tf.summary.image('images', actual_images[:1])
-
     # build network
+    is_training = mode == tf.estimator.ModeKeys.TRAIN
+
+    g_params = {
+        'z_dim': z_dim,
+        'w_dim': w_dim,
+        'n_mapping': n_mapping,
+        'c_res': res,
+        'alpha': alpha,
+        'w_avg': w_avg,
+        'resolutions': resolutions,
+        'featuremaps': featuremaps,
+        'w_ema_decay': w_ema_decay,
+        'style_mixing_prob': style_mixing_prob,
+        'truncation_psi': truncation_psi,
+        'truncation_cutoff': truncation_cutoff,
+    }
+
+    with tf.control_dependencies(alpha_assign_op):
+        fake_images = generator(z, g_params, is_training)
+        fake_scores = discriminator(fake_images, alpha, resolutions, featuremaps)
+        real_scores = discriminator(real_images, alpha, resolutions, featuremaps)
 
     # ==================================================================================================================
     # PREDICTION
     # ==================================================================================================================
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions={})
+
+    # prepare aapropriate training vars
+    d_vars, g_vars = filter_trainable_variables(res)
+
+    # compute loss
 
     # ==================================================================================================================
     # EVALUATION
