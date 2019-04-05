@@ -33,9 +33,9 @@ def smooth_crossfade(images, alpha):
     return images
 
 
-def upscale_to_res(images, res, network_output):
+def upscale_to_res(images, res, network_output_res):
     s = tf.shape(images)
-    factor = int(network_output // res)
+    factor = int(network_output_res // res)
     # factor = tf.cast(2 ** tf.floor(lod), tf.int32)
     images = tf.reshape(images, [-1, s[1], s[2], 1, s[3], 1])
     images = tf.tile(images, [1, 1, 1, factor, 1, factor])
@@ -43,20 +43,32 @@ def upscale_to_res(images, res, network_output):
     return images
 
 
-def preprocess_image(images, res, network_output, alpha):
+def preprocess_image(images, res, network_output_res, alpha):
     images = adjust_dynamic_range(images)
     images = random_flip_left_right_nchw(images)
     images = smooth_crossfade(images, alpha)
-    images = upscale_to_res(images, res, network_output)
+    images = upscale_to_res(images, res, network_output_res)
+    images.set_shape([None, 3, network_output_res, network_output_res])
     return images
 
 
 def compute_smooth_transition_rate(batch_size, global_step, train_trans_images_per_res):
-    n_cur_img = batch_size * global_step
+    train_trans_images_per_res_tensor = tf.constant(train_trans_images_per_res, dtype=tf.float32, shape=[],
+                                                    name='train_trans_images_per_res')
 
-    alpha = 0.0
-    if n_cur_img < train_trans_images_per_res:
-        alpha = float(train_trans_images_per_res - n_cur_img) / train_trans_images_per_res
+    # alpha == 1.0: use only previous resolution output
+    # alpha == 0.0: use only current resolution output
+    n_cur_img = batch_size * global_step
+    n_cur_img = tf.cast(n_cur_img, dtype=tf.float32)
+
+    is_less_op = tf.less_equal(n_cur_img, train_trans_images_per_res_tensor)
+    alpha = tf.cond(is_less_op,
+                    true_fn=lambda: (train_trans_images_per_res - n_cur_img) / train_trans_images_per_res_tensor,
+                    false_fn=lambda: tf.constant(0.0, dtype=tf.float32, shape=[]))
+
+    # alpha = 0.0
+    # if n_cur_img < train_trans_images_per_res:
+    #     alpha = float(train_trans_images_per_res - n_cur_img) / float(train_trans_images_per_res)
     return alpha
 
 
@@ -123,25 +135,21 @@ def model_fn(features, labels, mode, params):
     alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=zero_init, trainable=False)
     w_avg = tf.get_variable('w_avg', shape=[w_dim], dtype=tf.float32, initializer=zero_init, trainable=False)
 
+    # compute current smooth transition alpha
     global_step = tf.train.get_or_create_global_step()
     alpha_const = compute_smooth_transition_rate(batch_size, global_step, train_trans_images_per_res)
     alpha_assign_op = tf.assign(alpha, alpha_const)
-
-    # preprocess input images
-    real_images.set_shape([None, 3, res, res])
-    real_images = preprocess_image(real_images, res, final_res, alpha=1.0)
-    print()
 
     # build network
     is_training = mode == tf.estimator.ModeKeys.TRAIN
 
     g_params = {
+        'alpha': alpha,
+        'w_avg': w_avg,
         'z_dim': z_dim,
         'w_dim': w_dim,
         'n_mapping': n_mapping,
-        'c_res': res,
-        'alpha': alpha,
-        'w_avg': w_avg,
+        'train_res': res,
         'resolutions': resolutions,
         'featuremaps': featuremaps,
         'w_ema_decay': w_ema_decay,
@@ -150,7 +158,12 @@ def model_fn(features, labels, mode, params):
         'truncation_cutoff': truncation_cutoff,
     }
 
-    with tf.control_dependencies(alpha_assign_op):
+    with tf.control_dependencies([alpha_assign_op]):
+        # preprocess input images
+        real_images.set_shape([None, 3, res, res])
+        real_images = preprocess_image(real_images, res, final_res, alpha=alpha)
+
+        # get generator & discriminator outputs
         fake_images = generator(z, g_params, is_training)
         fake_scores = discriminator(fake_images, alpha, resolutions, featuremaps)
         real_scores = discriminator(real_images, alpha, resolutions, featuremaps)
@@ -161,15 +174,18 @@ def model_fn(features, labels, mode, params):
     if mode == tf.estimator.ModeKeys.PREDICT:
         return tf.estimator.EstimatorSpec(mode=mode, predictions={})
 
-    # prepare aapropriate training vars
+    # prepare appropriate training vars
     d_vars, g_vars = filter_trainable_variables(res)
 
     # compute loss
+    loss = tf.reduce_sum(tf.square(tf.subtract(1.0, 0.5)))
+
+    # summaries
+    tf.summary.scalar('alpha', alpha)
 
     # ==================================================================================================================
     # EVALUATION
     # ==================================================================================================================
-    loss = tf.reduce_sum(tf.square(tf.subtract(y, y_)))
     if mode == tf.estimator.ModeKeys.EVAL:
         return tf.estimator.EstimatorSpec(mode=mode, loss=loss, eval_metric_ops={}, predictions={})
 

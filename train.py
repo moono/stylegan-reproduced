@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import tensorflow as tf
 
 from datasets.ffhq.ffhq_dataset import input_fn
@@ -55,6 +56,9 @@ def main():
         # set model checkpoint saving locations
         model_dir = os.path.join(model_save_base_dir, '{:d}x{:d}'.format(res, res))
 
+        # compute max training step for this resolution
+        max_steps = int(np.ceil((train_fixed_images_per_res + train_trans_images_per_res) / batch_size))
+
         # find variables to warm-start for this resolution
         if ii == 0:
             ws = None
@@ -99,7 +103,7 @@ def main():
         # start training...
         train_spec = tf.estimator.TrainSpec(
             input_fn=lambda: input_fn(tfrecord_dir, res, batch_size, True),
-            max_steps=None,
+            max_steps=max_steps,
         )
         eval_spec = tf.estimator.EvalSpec(
             input_fn=lambda: input_fn(tfrecord_dir, res, batch_size, False),

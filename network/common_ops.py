@@ -20,7 +20,7 @@ def get_weight(weight_shape, gain, lrmul):
 
 def equalized_dense(x, units, gain, lrmul):
     x = tf.layers.flatten(x)
-    weight_shape = [x.shape[1].value, units]
+    weight_shape = [x.get_shape().as_list()[1], units]
     w = get_weight(weight_shape, gain, lrmul)
     x = tf.matmul(x, w)
     return x
@@ -28,7 +28,7 @@ def equalized_dense(x, units, gain, lrmul):
 
 def equalized_conv2d(x, fmaps, kernel, gain, lrmul):
     assert kernel >= 1 and kernel % 2 == 1
-    weight_shape = [kernel, kernel, x.shape[1].value, fmaps]
+    weight_shape = [kernel, kernel, x.get_shape().as_list()[1], fmaps]
     w = get_weight(weight_shape, gain, lrmul)
     x = tf.nn.conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME', data_format='NCHW')
     return x
@@ -48,7 +48,7 @@ def upscale2d_conv2d(x, fmaps, kernel, gain, lrmul):
         return x
 
     # Fused => perform both ops simultaneously using tf.nn.conv2d_transpose().
-    weight = get_weight([kernel, kernel, x.shape[1].value, fmaps], gain, lrmul)
+    weight = get_weight([kernel, kernel, x.get_shape().as_list()[1], fmaps], gain, lrmul)
     weight = tf.transpose(weight, [0, 1, 3, 2])  # [kernel, kernel, fmaps_out, fmaps_in]
     weight = tf.pad(weight, [[1, 1], [1, 1], [0, 0], [0, 0]], mode='CONSTANT')
     weight = tf.add_n([weight[1:, 1:], weight[:-1, 1:], weight[1:, :-1], weight[:-1, :-1]])
@@ -71,7 +71,7 @@ def conv2d_downscale2d(x, fmaps, kernel, gain, lrmul):
         return x
 
     # Fused => perform both ops simultaneously using tf.nn.conv2d().
-    w = get_weight([kernel, kernel, x.shape[1].value, fmaps], gain, lrmul)
+    w = get_weight([kernel, kernel, x.get_shape().as_list()[1], fmaps], gain, lrmul)
     w = tf.pad(w, [[1, 1], [1, 1], [0, 0], [0, 0]], mode='CONSTANT')
     w = tf.add_n([w[1:, 1:], w[:-1, 1:], w[1:, :-1], w[:-1, :-1]]) * 0.25
     w = tf.cast(w, x.dtype)
@@ -92,7 +92,7 @@ def apply_noise(x):
     assert len(x.shape) == 4  # NCHW
     with tf.variable_scope('Noise'):
         noise = tf.random_normal([tf.shape(x)[0], 1, x.shape[2], x.shape[3]])
-        weight = tf.get_variable('weight', shape=[x.shape[1].value], initializer=tf.initializers.zeros())
+        weight = tf.get_variable('weight', shape=[x.get_shape().as_list()[1]], initializer=tf.initializers.zeros())
         weight = tf.reshape(weight, [1, -1, 1, 1])
         x = x + noise * weight
     return x

@@ -116,7 +116,7 @@ def update_moving_average_of_w(w_broadcasted, w_avg, w_ema_decay):
     return w_broadcasted
 
 
-def style_mixing_regularization(z, w_broadcasted, n_mapping, n_broadcast, cur_layer_index, style_mixing_prob):
+def style_mixing_regularization(z, w_broadcasted, n_mapping, n_broadcast, train_res_index, style_mixing_prob):
     with tf.name_scope('StyleMix'):
         w_dim = w_broadcasted.shape[2].value
         z2 = tf.random_normal(tf.shape(z), dtype=tf.float32)
@@ -124,8 +124,8 @@ def style_mixing_regularization(z, w_broadcasted, n_mapping, n_broadcast, cur_la
         layer_indices = np.arange(n_broadcast)[np.newaxis, :, np.newaxis]
         mixing_cutoff = tf.cond(
             tf.random_uniform([], 0.0, 1.0) < style_mixing_prob,
-            lambda: tf.random_uniform([], 1, cur_layer_index, dtype=tf.int32),
-            lambda: cur_layer_index)
+            lambda: tf.random_uniform([], 1, train_res_index, dtype=tf.int32),
+            lambda: train_res_index)
         w_broadcasted = tf.where(tf.broadcast_to(layer_indices < mixing_cutoff, tf.shape(w_broadcasted)),
                                  w_broadcasted,
                                  w_broadcasted2)
@@ -145,7 +145,6 @@ def generator(z, g_params, is_training):
     # set parameters
     w_dim = g_params['w_dim']
     n_mapping = g_params['n_mapping']
-    c_res = g_params['c_res']
     w_avg = g_params['w_avg']
     alpha = g_params['alpha']
     resolutions = g_params['resolutions']
@@ -154,8 +153,6 @@ def generator(z, g_params, is_training):
     style_mixing_prob = g_params['style_mixing_prob']
     truncation_psi = g_params['truncation_psi']
     truncation_cutoff = g_params['truncation_cutoff']
-
-    c_idx = resolutions.index(c_res)
 
     # start building layers
     # mapping layers
@@ -168,7 +165,12 @@ def generator(z, g_params, is_training):
         w_broadcasted = update_moving_average_of_w(w_broadcasted, w_avg, w_ema_decay)
 
         # perform style mixing regularization
-        w_broadcasted = style_mixing_regularization(z, w_broadcasted, n_mapping, n_broadcast, c_idx, style_mixing_prob)
+        if 'train_res' in g_params:
+            train_res_idx = resolutions.index(g_params['train_res'])
+        else:
+            train_res_idx = len(resolutions) - 1
+        w_broadcasted = style_mixing_regularization(z, w_broadcasted, n_mapping, n_broadcast, train_res_idx,
+                                                    style_mixing_prob)
 
     # apply truncation trick on evaluation
     if not is_training:
@@ -192,7 +194,7 @@ def main():
     n_mapping = 8
     resolutions = [4, 8, 16, 32, 64, 128, 256, 512, 1024]
     featuremaps = [512, 512, 512, 512, 256, 128, 64, 32, 16]
-    c_res = 8
+    train_res = 8
     alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=zero_init, trainable=False)
     w_avg = tf.get_variable('w_avg', shape=[w_dim], dtype=tf.float32, initializer=zero_init, trainable=False)
     w_ema_decay = 0.995
@@ -201,12 +203,12 @@ def main():
     truncation_cutoff = 8
 
     g_params = {
+        'alpha': alpha,
+        'w_avg': w_avg,
         'z_dim': z_dim,
         'w_dim': w_dim,
         'n_mapping': n_mapping,
-        'c_res': c_res,
-        'alpha': alpha,
-        'w_avg': w_avg,
+        'train_res': train_res,
         'resolutions': resolutions,
         'featuremaps': featuremaps,
         'w_ema_decay': w_ema_decay,
@@ -217,7 +219,7 @@ def main():
 
     z = tf.placeholder(tf.float32, shape=[None, z_dim], name='z')
     fake_images = generator(z, g_params, is_training)
-    print(fake_images.shape)
+    print('output fake image shape: {}'.format(fake_images.shape))
 
     print_variables()
     return

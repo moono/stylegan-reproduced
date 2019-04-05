@@ -14,3 +14,8 @@
 * b module
     * what is it?
 * adaptive instance norm
+
+## Need to check implementation
+* moving average w
+* alpha, control_dependencies
+* loss calculations
