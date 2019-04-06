@@ -49,12 +49,12 @@ def main():
 
     # find starting resolution for training
     start_train_index = resolutions.index(start_res)
-    for ii, res in enumerate(resolutions[start_train_index:]):
+    for ii, train_res in enumerate(resolutions[start_train_index:]):
         # get current batch size
-        batch_size = batch_sizes.get(res, batch_size_base)
+        batch_size = batch_sizes.get(train_res, batch_size_base)
 
         # set model checkpoint saving locations
-        model_dir = os.path.join(model_save_base_dir, '{:d}x{:d}'.format(res, res))
+        model_dir = os.path.join(model_save_base_dir, '{:d}x{:d}'.format(train_res, train_res))
 
         # compute max training step for this resolution
         max_steps = int(np.ceil((train_fixed_images_per_res + train_trans_images_per_res) / batch_size))
@@ -63,7 +63,7 @@ def main():
         if ii == 0:
             ws = None
         else:
-            res_to_restore = resolutions[:resolutions.index(res)]
+            res_to_restore = resolutions[:resolutions.index(train_res)]
             prev_res = res_to_restore[-1]
             ws_dir = os.path.join(model_save_base_dir, '{:d}x{:d}'.format(prev_res, prev_res))
             vars_to_warm_start = get_vars_to_restore(res_to_restore)
@@ -86,7 +86,7 @@ def main():
                 'truncation_cutoff': truncation_cutoff,
 
                 # additional training params
-                'res': res,
+                'train_res': train_res,
                 'final_res': final_res,
                 'resolutions': resolutions,
                 'featuremaps': featuremaps,
@@ -94,19 +94,19 @@ def main():
                 'train_fixed_images_per_res': train_fixed_images_per_res,
                 'train_trans_images_per_res': train_trans_images_per_res,
                 'batch_size': batch_size,
-                'g_learning_rate': g_learning_rates.get(res, learning_rate_base),
-                'd_learning_rate': d_learning_rates.get(res, learning_rate_base)
+                'g_learning_rate': g_learning_rates.get(train_res, learning_rate_base),
+                'd_learning_rate': d_learning_rates.get(train_res, learning_rate_base)
             },
             warm_start_from=ws
         )
 
         # start training...
         train_spec = tf.estimator.TrainSpec(
-            input_fn=lambda: input_fn(tfrecord_dir, res, batch_size, True),
+            input_fn=lambda: input_fn(tfrecord_dir, train_res, batch_size, True),
             max_steps=max_steps,
         )
         eval_spec = tf.estimator.EvalSpec(
-            input_fn=lambda: input_fn(tfrecord_dir, res, batch_size, False),
+            input_fn=lambda: input_fn(tfrecord_dir, train_res, batch_size, False),
             steps=10000,
             start_delay_secs=60 * 2,
             throttle_secs=60 * 5,

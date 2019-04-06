@@ -107,7 +107,7 @@ def model_fn(features, labels, mode, params):
     truncation_psi = params['truncation_psi']
     truncation_cutoff = params['truncation_cutoff']
 
-    res = params['res']
+    train_res = params['train_res']
     final_res = params['final_res']
     resolutions = params['resolutions']
     featuremaps = params['featuremaps']
@@ -149,7 +149,7 @@ def model_fn(features, labels, mode, params):
         'z_dim': z_dim,
         'w_dim': w_dim,
         'n_mapping': n_mapping,
-        'train_res': res,
+        'train_res': train_res,
         'resolutions': resolutions,
         'featuremaps': featuremaps,
         'w_ema_decay': w_ema_decay,
@@ -160,13 +160,13 @@ def model_fn(features, labels, mode, params):
 
     with tf.control_dependencies([alpha_assign_op]):
         # preprocess input images
-        real_images.set_shape([batch_size, 3, res, res])
-        real_images = preprocess_image(real_images, res, final_res, alpha=alpha)
+        real_images.set_shape([batch_size, 3, train_res, train_res])
+        real_images = preprocess_image(real_images, train_res, final_res, alpha=alpha)
 
         # get generator & discriminator outputs
         fake_images = generator(z, g_params, is_training=True)
-        fake_scores = discriminator(fake_images, alpha, resolutions, featuremaps)
-        real_scores = discriminator(real_images, alpha, resolutions, featuremaps)
+        fake_scores = discriminator(fake_images, alpha, resolutions, featuremaps, train_res)
+        real_scores = discriminator(real_images, alpha, resolutions, featuremaps, train_res)
 
     # ==================================================================================================================
     # PREDICTION
@@ -175,7 +175,7 @@ def model_fn(features, labels, mode, params):
         return tf.estimator.EstimatorSpec(mode=mode, predictions={})
 
     # prepare appropriate training vars
-    d_vars, g_vars = filter_trainable_variables(res)
+    d_vars, g_vars = filter_trainable_variables(train_res)
 
     # compute losses
     r1_gamma, r2_gamma = 10.0, 0.0

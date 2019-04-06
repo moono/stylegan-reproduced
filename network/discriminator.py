@@ -4,7 +4,7 @@ import tensorflow as tf
 from network.official_code_ops import blur2d, downscale2d, minibatch_stddev_layer
 from network.common_ops import (
     equalized_dense, equalized_conv2d, conv2d_downscale2d, apply_bias,
-    lerp_clip
+    lerp_clip, smooth_transition
 )
 
 
@@ -53,7 +53,7 @@ def discriminator_last_block(x, res, n_f0, n_f1):
     return x
 
 
-def discriminator(image, alpha, resolutions, featuremaps):
+def discriminator(image, alpha, resolutions, featuremaps, train_res=None):
     assert len(resolutions) == len(featuremaps)
 
     # discriminator's (resolutions and featuremaps) are reversed against generator's
@@ -73,11 +73,7 @@ def discriminator(image, alpha, resolutions, featuremaps):
             x = discriminator_block(x, res, n_f, n_f_next)
             img = downscale2d(img)
             y = fromrgb(img, res_next, n_f_next)
-
-            # smooth transition
-            with tf.variable_scope('{:d}x{:d}'.format(res, res)):
-                with tf.variable_scope('smooth_transition'):
-                    x = lerp_clip(x, y, alpha)
+            x = smooth_transition(y, x, res, train_res, alpha)
 
         # last block
         res = r_resolutions[-1]
@@ -96,12 +92,13 @@ def main():
 
     resolutions = [4, 8, 16, 32, 64, 128, 256, 512, 1024]
     featuremaps = [512, 512, 512, 512, 256, 128, 64, 32, 16]
-    c_res = 1024
+    input_image_res = 1024
+    train_res = 32
     # c_idx = resolutions.index(c_res)
     alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=zero_init, trainable=False)
 
-    fake_images = tf.constant(0.5, dtype=tf.float32, shape=[1, 3, c_res, c_res])
-    fake_score = discriminator(fake_images, alpha, resolutions, featuremaps)
+    fake_images = tf.constant(0.5, dtype=tf.float32, shape=[1, 3, input_image_res, input_image_res])
+    fake_score = discriminator(fake_images, alpha, resolutions, featuremaps, train_res)
 
     print(fake_score.shape)
     print_variables()

@@ -5,7 +5,7 @@ from network.official_code_ops import blur2d, upscale2d
 from network.common_ops import (
     equalized_dense, equalized_conv2d, upscale2d_conv2d, apply_bias, apply_noise,
     pixel_norm, adaptive_instance_norm,
-    lerp, lerp_clip
+    lerp, lerp_clip, smooth_transition
 )
 
 
@@ -81,7 +81,7 @@ def torgb(x, res):
     return x
 
 
-def g_synthesis(w_broadcasted, alpha, resolutions, featuremaps):
+def g_synthesis(w_broadcasted, alpha, resolutions, featuremaps, train_res=None):
     assert len(resolutions) == len(featuremaps)
 
     # there is 2-layers each in every reolution
@@ -99,9 +99,7 @@ def g_synthesis(w_broadcasted, alpha, resolutions, featuremaps):
             x = synthesis_block(x, res, w_broadcasted[:, layer_index], w_broadcasted[:, layer_index + 1], n_f)
             img = torgb(x, res)
             images_out = upscale2d(images_out)
-            with tf.variable_scope('{:d}x{:d}'.format(res, res)):
-                with tf.variable_scope('smooth_transition'):
-                    images_out = lerp_clip(img, images_out, alpha)
+            images_out = smooth_transition(images_out, img, res, train_res, alpha)
 
             layer_index += 2
     return tf.identity(images_out, name='images_out')
@@ -143,16 +141,23 @@ def truncation_trick(n_broadcast, w_broadcasted, w_avg, truncation_psi, truncati
 
 def generator(z, g_params, is_training):
     # set parameters
+    alpha = g_params['alpha']
+    w_avg = g_params['w_avg']
     w_dim = g_params['w_dim']
     n_mapping = g_params['n_mapping']
-    w_avg = g_params['w_avg']
-    alpha = g_params['alpha']
     resolutions = g_params['resolutions']
     featuremaps = g_params['featuremaps']
     w_ema_decay = g_params['w_ema_decay']
     style_mixing_prob = g_params['style_mixing_prob']
     truncation_psi = g_params['truncation_psi']
     truncation_cutoff = g_params['truncation_cutoff']
+
+    if 'train_res' in g_params:
+        train_res = g_params['train_res']
+        train_res_idx = resolutions.index(train_res)
+    else:
+        train_res = None
+        train_res_idx = len(resolutions) - 1
 
     # start building layers
     # mapping layers
@@ -165,10 +170,6 @@ def generator(z, g_params, is_training):
         w_broadcasted = update_moving_average_of_w(w_broadcasted, w_avg, w_ema_decay)
 
         # perform style mixing regularization
-        if 'train_res' in g_params:
-            train_res_idx = resolutions.index(g_params['train_res'])
-        else:
-            train_res_idx = len(resolutions) - 1
         w_broadcasted = style_mixing_regularization(z, w_broadcasted, n_mapping, n_broadcast, train_res_idx,
                                                     style_mixing_prob)
 
@@ -177,7 +178,7 @@ def generator(z, g_params, is_training):
         w_broadcasted = truncation_trick(n_broadcast, w_broadcasted, w_avg, truncation_psi, truncation_cutoff)
 
     # synthesis layers
-    images_out = g_synthesis(w_broadcasted, alpha, resolutions, featuremaps)
+    images_out = g_synthesis(w_broadcasted, alpha, resolutions, featuremaps, train_res)
 
     return images_out
 
@@ -194,7 +195,7 @@ def main():
     n_mapping = 8
     resolutions = [4, 8, 16, 32, 64, 128, 256, 512, 1024]
     featuremaps = [512, 512, 512, 512, 256, 128, 64, 32, 16]
-    train_res = 8
+    train_res = 32
     alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=zero_init, trainable=False)
     w_avg = tf.get_variable('w_avg', shape=[w_dim], dtype=tf.float32, initializer=zero_init, trainable=False)
     w_ema_decay = 0.995
