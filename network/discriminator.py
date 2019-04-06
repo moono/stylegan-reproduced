@@ -82,7 +82,7 @@ def discriminator(image, alpha, resolutions, featuremaps):
         # last block
         res = r_resolutions[-1]
         n_f = r_featuremaps[-1]
-        discriminator_last_block(x, res, n_f, n_f)
+        x = discriminator_last_block(x, res, n_f, n_f)
 
         scores_out = tf.identity(x, name='scores_out')
     return scores_out
