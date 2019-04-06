@@ -160,11 +160,11 @@ def model_fn(features, labels, mode, params):
 
     with tf.control_dependencies([alpha_assign_op]):
         # preprocess input images
-        real_images.set_shape([None, 3, res, res])
+        real_images.set_shape([batch_size, 3, res, res])
         real_images = preprocess_image(real_images, res, final_res, alpha=alpha)
 
         # get generator & discriminator outputs
-        fake_images = generator(z, g_params, is_training)
+        fake_images = generator(z, g_params, is_training=True)
         fake_scores = discriminator(fake_images, alpha, resolutions, featuremaps)
         real_scores = discriminator(real_images, alpha, resolutions, featuremaps)
 
@@ -177,11 +177,31 @@ def model_fn(features, labels, mode, params):
     # prepare appropriate training vars
     d_vars, g_vars = filter_trainable_variables(res)
 
-    # compute loss
-    loss = tf.reduce_sum(tf.square(tf.subtract(1.0, 0.5)))
+    # compute losses
+    r1_gamma, r2_gamma = 10.0, 0.0
+
+    # discriminator loss: gradient penalty
+    d_loss_gan = tf.nn.softplus(fake_scores) + tf.nn.softplus(-real_scores)
+    real_loss = tf.reduce_sum(real_scores)
+    real_grads = tf.gradients(real_loss, [real_images])[0]
+    r1_penalty = tf.reduce_sum(tf.square(real_grads), axis=[1, 2, 3])
+    # r1_penalty = tf.reduce_mean(r1_penalty)
+    d_loss = d_loss_gan + r1_penalty * (r1_gamma * 0.5)
+    d_loss = tf.reduce_mean(d_loss)
+
+    # generator loss: logistic nonsaturating
+    g_loss = tf.nn.softplus(-fake_scores)
+    g_loss = tf.reduce_mean(g_loss)
+
+    # combine loss for tensorboard
+    loss = d_loss + g_loss
 
     # summaries
     tf.summary.scalar('alpha', alpha)
+    tf.summary.scalar('d_loss_gan', d_loss_gan)
+    tf.summary.scalar('r1_penalty', r1_penalty)
+    tf.summary.scalar('d_loss', d_loss)
+    tf.summary.scalar('g_loss', g_loss)
 
     # ==================================================================================================================
     # EVALUATION
@@ -193,9 +213,13 @@ def model_fn(features, labels, mode, params):
     # TRAINING
     # ==================================================================================================================
     if mode == tf.estimator.ModeKeys.TRAIN:
-        t_var = tf.trainable_variables()
-        optimizer = tf.train.GradientDescentOptimizer(learning_rate=0.001)
-        train_op = optimizer.minimize(loss, global_step, t_var)
+        d_optimizer = tf.train.AdamOptimizer(g_learning_rate, beta1=0.0, beta2=0.99, epsilon=1e-8)
+        g_optimizer = tf.train.AdamOptimizer(d_learning_rate, beta1=0.0, beta2=0.99, epsilon=1e-8)
+
+        with tf.control_dependencies([alpha_assign_op]):
+            d_train_opt = d_optimizer.minimize(d_loss, var_list=d_vars)
+            g_train_opt = g_optimizer.minimize(g_loss, var_list=g_vars, global_step=global_step)
+            train_op = tf.group(d_train_opt, g_train_opt)
         return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op, eval_metric_ops={}, predictions={})
 
 
