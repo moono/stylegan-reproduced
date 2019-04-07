@@ -164,23 +164,23 @@ def lerp_clip(a, b, t):
     return out
 
 
-def smooth_transition(prev, curr, res, train_res, alpha):
+def smooth_transition(prv, cur, cur_res, train_res, alpha):
     # alpha == 1.0: use only previous resolution output
     # alpha == 0.0: use only current resolution output
 
-    with tf.variable_scope('{:d}x{:d}'.format(res, res)):
+    with tf.variable_scope('{:d}x{:d}'.format(cur_res, cur_res)):
         with tf.variable_scope('smooth_transition'):
             # use alpha for current resolution transition
-            if train_res is not None and train_res == res:
-                out = lerp_clip(curr, prev, alpha)
+            if train_res is not None and train_res == cur_res:
+                out = lerp_clip(cur, prv, alpha)
 
             # ex) train_res=32, current_res=64
-            # use res=32 block output (bypass)
-            elif train_res is not None and train_res < res:
-                out = lerp_clip(curr, prev, 1.0)
+            # use res=32 block output (bypass res=64 output)
+            elif train_res is not None and train_res < cur_res:
+                out = lerp_clip(cur, prv, 1.0)
 
             # ex) train_res=32, current_res=16
             # use res=16 block output
-            else:   # train_res > res or train_res == None
-                out = lerp_clip(curr, prev, 0.0)
+            else:   # train_res > cur_res or train_res == None
+                out = lerp_clip(cur, prv, 0.0)
     return out
