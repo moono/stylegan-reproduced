@@ -54,7 +54,9 @@ def discriminator_last_block(x, res, n_f0, n_f1):
 
 
 def discriminator(image, alpha, resolutions, featuremaps, train_res=None):
+    # check input parameters
     assert len(resolutions) == len(featuremaps)
+    assert len(resolutions) >= 2
 
     # discriminator's (resolutions and featuremaps) are reversed against generator's
     r_resolutions = resolutions[::-1]
@@ -84,7 +86,7 @@ def discriminator(image, alpha, resolutions, featuremaps, train_res=None):
     return scores_out
 
 
-def main():
+def test_original_size():
     from utils.utils import print_variables
 
     # prepare variables
@@ -92,7 +94,7 @@ def main():
 
     resolutions = [4, 8, 16, 32, 64, 128, 256, 512, 1024]
     featuremaps = [512, 512, 512, 512, 256, 128, 64, 32, 16]
-    input_image_res = 1024
+    input_image_res = resolutions[-1]
     train_res = 32
     # c_idx = resolutions.index(c_res)
     alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=zero_init, trainable=False)
@@ -102,6 +104,33 @@ def main():
 
     print(fake_score.shape)
     print_variables()
+    return
+
+
+def test_reduced_size():
+    from utils.utils import print_variables
+
+    # prepare variables
+    zero_init = tf.initializers.zeros()
+
+    resolutions = [4, 8]
+    featuremaps = [512, 512]
+    input_image_res = resolutions[-1]
+    train_res = 8
+    # c_idx = resolutions.index(c_res)
+    alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=zero_init, trainable=False)
+
+    fake_images = tf.constant(0.5, dtype=tf.float32, shape=[1, 3, input_image_res, input_image_res])
+    fake_score = discriminator(fake_images, alpha, resolutions, featuremaps, train_res)
+
+    print(fake_score.shape)
+    print_variables()
+    return
+
+
+def main():
+    test_original_size()
+    test_reduced_size()
     return
 
 

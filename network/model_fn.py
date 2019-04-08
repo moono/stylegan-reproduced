@@ -52,6 +52,14 @@ def preprocess_image(images, res, network_output_res, alpha):
     return images
 
 
+def preprocess_fit_train_image(images, res, alpha):
+    images = adjust_dynamic_range(images)
+    images = random_flip_left_right_nchw(images)
+    images = smooth_crossfade(images, alpha)
+    images.set_shape([None, 3, res, res])
+    return images
+
+
 def compute_smooth_transition_rate(batch_size, global_step, train_trans_images_per_res):
     train_trans_images_per_res_tensor = tf.constant(train_trans_images_per_res, dtype=tf.float32, shape=[],
                                                     name='train_trans_images_per_res')
@@ -108,26 +116,15 @@ def model_fn(features, labels, mode, params):
     truncation_cutoff = params['truncation_cutoff']
 
     train_res = params['train_res']
-    final_res = params['final_res']
+    # final_res = params['final_res']
     resolutions = params['resolutions']
     featuremaps = params['featuremaps']
-    total_images = params['total_images']
-    train_fixed_images_per_res = params['train_fixed_images_per_res']
+    # total_images = params['total_images']
+    # train_fixed_images_per_res = params['train_fixed_images_per_res']
     train_trans_images_per_res = params['train_trans_images_per_res']
     batch_size = params['batch_size']
     g_learning_rate = params['g_learning_rate']
     d_learning_rate = params['d_learning_rate']
-
-    # w = tf.Variable(0.5, dtype=tf.float32)
-    # x = tf.constant(1, dtype=tf.float32)
-    # y_ = tf.multiply(x, w)
-    # y = tf.constant(1, dtype=tf.float32)
-    #
-    # actual_images = tf.transpose(real_images, perm=[0, 2, 3, 1])
-    # image_shape = tf.shape(actual_images)
-    # tf.summary.scalar('height', image_shape[1])
-    # tf.summary.scalar('width', image_shape[2])
-    # tf.summary.image('images', actual_images[:1])
 
     # create additional variables & constants
     z = tf.random_normal(shape=[batch_size, z_dim], dtype=tf.float32)
@@ -161,7 +158,8 @@ def model_fn(features, labels, mode, params):
     with tf.control_dependencies([alpha_assign_op]):
         # preprocess input images
         real_images.set_shape([batch_size, 3, train_res, train_res])
-        real_images = preprocess_image(real_images, train_res, final_res, alpha=alpha)
+        # real_images = preprocess_image(real_images, train_res, final_res, alpha=alpha)
+        real_images = preprocess_fit_train_image(real_images, train_res, alpha=alpha)
 
         # get generator & discriminator outputs
         fake_images = generator(z, g_params, is_training=True)
@@ -198,8 +196,8 @@ def model_fn(features, labels, mode, params):
 
     # summaries
     tf.summary.scalar('alpha', alpha)
-    tf.summary.scalar('d_loss_gan', d_loss_gan)
-    tf.summary.scalar('r1_penalty', r1_penalty)
+    tf.summary.scalar('d_loss_gan', tf.reduce_mean(d_loss_gan))
+    tf.summary.scalar('r1_penalty', tf.reduce_mean(r1_penalty))
     tf.summary.scalar('d_loss', d_loss)
     tf.summary.scalar('g_loss', g_loss)
 

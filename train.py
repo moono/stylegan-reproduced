@@ -19,10 +19,10 @@ def get_vars_to_restore(res_to_restore):
 
 
 def main():
-    # model_save_base_dir = '/mnt/vision-nas/moono/trained_models/stylegan-reproduced'
-    # tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq'
-    model_save_base_dir = './models'
-    tfrecord_dir = './datasets/ffhq'
+    model_save_base_dir = '/mnt/vision-nas/moono/trained_models/stylegan-reproduced'
+    tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq'
+    # model_save_base_dir = './models'
+    # tfrecord_dir = './datasets/ffhq'
 
     # network specific parameters
     z_dim = 512
@@ -37,8 +37,8 @@ def main():
 
     # training specific parameters
     start_res = 8
-    final_res = 1024
-    total_images = 70000
+    # final_res = resolutions[-1]
+    # total_images = 70000
     train_fixed_images_per_res = 600000
     train_trans_images_per_res = 600000
     batch_size_base = 2
@@ -50,6 +50,14 @@ def main():
     # find starting resolution for training
     start_train_index = resolutions.index(start_res)
     for ii, train_res in enumerate(resolutions[start_train_index:]):
+        # new resolutions & featuremaps
+        original_train_res_index = resolutions.index(train_res)
+        train_resolutions = resolutions[:original_train_res_index + 1]
+        train_featuremaps = featuremaps[:original_train_res_index + 1]
+        # print('train_res: {}'.format(train_res))
+        # print(train_resolutions)
+        # print(train_featuremaps)
+
         # get current batch size
         batch_size = batch_sizes.get(train_res, batch_size_base)
 
@@ -70,7 +78,7 @@ def main():
             ws = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=ws_dir, vars_to_warm_start=vars_to_warm_start)
 
         # create estimator
-        run_config = tf.estimator.RunConfig(keep_checkpoint_max=1, save_checkpoints_steps=10000)
+        run_config = tf.estimator.RunConfig(keep_checkpoint_max=1, save_checkpoints_steps=2000)
         model = tf.estimator.Estimator(
             model_fn=model_fn,
             model_dir=model_dir,
@@ -87,11 +95,11 @@ def main():
 
                 # additional training params
                 'train_res': train_res,
-                'final_res': final_res,
-                'resolutions': resolutions,
-                'featuremaps': featuremaps,
-                'total_images': total_images,
-                'train_fixed_images_per_res': train_fixed_images_per_res,
+                # 'final_res': final_res,
+                'resolutions': train_resolutions,
+                'featuremaps': train_featuremaps,
+                # 'total_images': total_images,
+                # 'train_fixed_images_per_res': train_fixed_images_per_res,
                 'train_trans_images_per_res': train_trans_images_per_res,
                 'batch_size': batch_size,
                 'g_learning_rate': g_learning_rates.get(train_res, learning_rate_base),

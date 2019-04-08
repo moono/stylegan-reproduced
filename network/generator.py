@@ -82,8 +82,6 @@ def torgb(x, res):
 
 
 def g_synthesis(w_broadcasted, alpha, resolutions, featuremaps, train_res=None):
-    assert len(resolutions) == len(featuremaps)
-
     # there is 2-layers each in every reolution
     with tf.variable_scope('g_synthesis', reuse=tf.AUTO_REUSE):
 
@@ -120,10 +118,11 @@ def style_mixing_regularization(z, w_broadcasted, n_mapping, n_broadcast, train_
         z2 = tf.random_normal(tf.shape(z), dtype=tf.float32)
         w_broadcasted2 = g_mapping(z2, w_dim, n_mapping, n_broadcast)
         layer_indices = np.arange(n_broadcast)[np.newaxis, :, np.newaxis]
+        cur_layer_index = (train_res_index + 1) * 2
         mixing_cutoff = tf.cond(
             tf.random_uniform([], 0.0, 1.0) < style_mixing_prob,
-            lambda: tf.random_uniform([], 1, train_res_index, dtype=tf.int32),
-            lambda: train_res_index)
+            lambda: tf.random_uniform([], 1, cur_layer_index, dtype=tf.int32),
+            lambda: tf.constant(cur_layer_index, dtype=tf.int32))
         w_broadcasted = tf.where(tf.broadcast_to(layer_indices < mixing_cutoff, tf.shape(w_broadcasted)),
                                  w_broadcasted,
                                  w_broadcasted2)
@@ -152,6 +151,11 @@ def generator(z, g_params, is_training):
     truncation_psi = g_params['truncation_psi']
     truncation_cutoff = g_params['truncation_cutoff']
 
+    # check input parameters
+    assert len(resolutions) == len(featuremaps)
+    assert len(resolutions) >= 2
+
+    # set more parameters
     if 'train_res' in g_params:
         train_res = g_params['train_res']
         train_res_idx = resolutions.index(train_res)
@@ -183,7 +187,7 @@ def generator(z, g_params, is_training):
     return images_out
 
 
-def main():
+def test_original_size():
     from utils.utils import print_variables
 
     # prepare variables
@@ -223,6 +227,55 @@ def main():
     print('output fake image shape: {}'.format(fake_images.shape))
 
     print_variables()
+    return
+
+
+def test_reduced_size():
+    from utils.utils import print_variables
+
+    # prepare variables
+    zero_init = tf.initializers.zeros()
+
+    is_training = True
+    z_dim = 512
+    w_dim = 512
+    n_mapping = 8
+    resolutions = [4, 8]
+    featuremaps = [512, 512]
+    train_res = 8
+    alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=zero_init, trainable=False)
+    w_avg = tf.get_variable('w_avg', shape=[w_dim], dtype=tf.float32, initializer=zero_init, trainable=False)
+    w_ema_decay = 0.995
+    style_mixing_prob = 0.9
+    truncation_psi = 0.7
+    truncation_cutoff = 8
+
+    g_params = {
+        'alpha': alpha,
+        'w_avg': w_avg,
+        'z_dim': z_dim,
+        'w_dim': w_dim,
+        'n_mapping': n_mapping,
+        'train_res': train_res,
+        'resolutions': resolutions,
+        'featuremaps': featuremaps,
+        'w_ema_decay': w_ema_decay,
+        'style_mixing_prob': style_mixing_prob,
+        'truncation_psi': truncation_psi,
+        'truncation_cutoff': truncation_cutoff,
+    }
+
+    z = tf.placeholder(tf.float32, shape=[None, z_dim], name='z')
+    fake_images = generator(z, g_params, is_training)
+    print('output fake image shape: {}'.format(fake_images.shape))
+
+    print_variables()
+    return
+
+
+def main():
+    test_original_size()
+    test_reduced_size()
     return
 
 
