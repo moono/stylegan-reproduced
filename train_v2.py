@@ -100,15 +100,15 @@ def main():
 
                 # additional training params
                 'train_res': train_res,
-                # 'final_res': final_res,
                 'resolutions': train_resolutions,
                 'featuremaps': train_featuremaps,
-                # 'total_images': total_images,
-                # 'train_fixed_images_per_res': train_fixed_images_per_res,
                 'train_trans_images_per_res': train_trans_images_per_res,
                 'batch_size': batch_size,
                 'g_learning_rate': g_learning_rates.get(train_res, learning_rate_base),
-                'd_learning_rate': d_learning_rates.get(train_res, learning_rate_base)
+                'd_learning_rate': d_learning_rates.get(train_res, learning_rate_base),
+
+                # extra param
+                'trained_model_dir': model_dir
             },
             warm_start_from=ws
         )
