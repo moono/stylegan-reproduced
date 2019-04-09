@@ -156,12 +156,11 @@ def generator(z, g_params, is_training):
     assert len(resolutions) >= 2
 
     # set more parameters
-    if 'train_res' in g_params:
-        train_res = g_params['train_res']
-        train_res_idx = resolutions.index(train_res)
-    else:
-        train_res = None
+    train_res = g_params.get('train_res', None) if is_training else None
+    if train_res is None:
         train_res_idx = len(resolutions) - 1
+    else:
+        train_res_idx = resolutions.index(train_res)
 
     # start building layers
     # mapping layers
@@ -170,6 +169,7 @@ def generator(z, g_params, is_training):
 
     # apply regularization techniques on training
     if is_training:
+        tf.summary.scalar('alpha_generator_training', alpha)
         # update moving average of w
         w_broadcasted = update_moving_average_of_w(w_broadcasted, w_avg, w_ema_decay)
 
@@ -179,6 +179,7 @@ def generator(z, g_params, is_training):
 
     # apply truncation trick on evaluation
     if not is_training:
+        tf.summary.scalar('alpha_generator_not_training', alpha)
         w_broadcasted = truncation_trick(n_broadcast, w_broadcasted, w_avg, truncation_psi, truncation_cutoff)
 
     # synthesis layers

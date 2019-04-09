@@ -62,6 +62,8 @@ def discriminator(image, alpha, resolutions, featuremaps, train_res=None):
     r_resolutions = resolutions[::-1]
     r_featuremaps = featuremaps[::-1]
 
+    tf.summary.scalar('alpha_discriminator_training', alpha)
+
     with tf.variable_scope('discriminator', reuse=tf.AUTO_REUSE):
         # set inputs
         img = image

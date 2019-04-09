@@ -2,8 +2,11 @@ import os
 import numpy as np
 import tensorflow as tf
 
-from datasets.ffhq.ffhq_dataset import input_fn
+from datasets.ffhq.ffhq_dataset import train_input_fn, eval_input_fn
 from network.model_fn import model_fn
+
+
+tf.logging.set_verbosity(tf.logging.INFO)
 
 
 def get_vars_to_restore(res_to_restore):
@@ -50,13 +53,12 @@ def main():
     # find starting resolution for training
     start_train_index = resolutions.index(start_res)
     for ii, train_res in enumerate(resolutions[start_train_index:]):
+        print('train_res: {}x{}'.format(train_res, train_res))
+
         # new resolutions & featuremaps
         original_train_res_index = resolutions.index(train_res)
         train_resolutions = resolutions[:original_train_res_index + 1]
         train_featuremaps = featuremaps[:original_train_res_index + 1]
-        # print('train_res: {}'.format(train_res))
-        # print(train_resolutions)
-        # print(train_featuremaps)
 
         # get current batch size
         batch_size = batch_sizes.get(train_res, batch_size_base)
@@ -78,7 +80,10 @@ def main():
             ws = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=ws_dir, vars_to_warm_start=vars_to_warm_start)
 
         # create estimator
-        run_config = tf.estimator.RunConfig(keep_checkpoint_max=1, save_checkpoints_steps=2000)
+        distribution = tf.contrib.distribute.MirroredStrategy()
+        run_config = tf.estimator.RunConfig(keep_checkpoint_max=1,
+                                            save_checkpoints_steps=2000,
+                                            train_distribute=distribution)
         model = tf.estimator.Estimator(
             model_fn=model_fn,
             model_dir=model_dir,
@@ -110,11 +115,11 @@ def main():
 
         # start training...
         train_spec = tf.estimator.TrainSpec(
-            input_fn=lambda: input_fn(tfrecord_dir, train_res, batch_size, True),
+            input_fn=lambda: train_input_fn(tfrecord_dir, z_dim, train_res, batch_size),
             max_steps=max_steps,
         )
         eval_spec = tf.estimator.EvalSpec(
-            input_fn=lambda: input_fn(tfrecord_dir, train_res, batch_size, False),
+            input_fn=lambda: eval_input_fn(z_dim, train_res),
             steps=10000,
             start_delay_secs=60 * 2,
             throttle_secs=60 * 5,

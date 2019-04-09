@@ -18,7 +18,12 @@ def parse_tfrecord_tf(record):
     return images
 
 
-def input_fn(tfrecord_base_dir, resolution, batch_size, is_training):
+def add_random_latent_z(images, z_dim):
+    z = tf.random_normal(shape=[z_dim], dtype=tf.float32)
+    return images, z
+
+
+def train_input_fn(tfrecord_base_dir, z_dim, resolution, batch_size):
     n_samples = 70000
     fn_index = int(np.log2(resolution))
 
@@ -26,21 +31,39 @@ def input_fn(tfrecord_base_dir, resolution, batch_size, is_training):
 
     dataset = tf.data.TFRecordDataset(tfrecord_fn)
     dataset = dataset.map(parse_tfrecord_tf, num_parallel_calls=8)
-    # dataset = dataset.apply(tf.contrib.data.map_and_batch(
-    #     map_func=lambda record: parse_tfrecord_tf(record),
-    #     batch_size=batch_size,
-    #     num_parallel_batches=8,
-    #     num_parallel_calls=None
-    # ))
-    if is_training:
-        dataset = dataset.shuffle(buffer_size=n_samples).repeat()
-
+    dataset = dataset.map(lambda images: add_random_latent_z(images, z_dim), num_parallel_calls=8)
+    dataset = dataset.shuffle(buffer_size=n_samples).repeat()
     dataset = dataset.prefetch(batch_size)
     dataset = dataset.batch(batch_size)
 
     # make dataset as dicionary for features
     dataset = dataset.map(
-        map_func=lambda records: ({'images': records}, tf.constant(0.0)),
+        map_func=lambda images, z: (
+            {
+                'real_images': images,
+                'z': z
+            },
+            tf.constant(0.0)),
+        num_parallel_calls=8
+    )
+
+    return dataset
+
+
+def eval_input_fn(z_dim, resolution):
+    n_samples = 5
+    rnd = np.random.RandomState(5)
+    z_data = rnd.randn(n_samples, z_dim)
+
+    dataset = tf.data.Dataset.from_tensor_slices(z_data)
+    dataset = dataset.map(lambda z: tf.cast(z, dtype=tf.float32), num_parallel_calls=8)
+    dataset = dataset.batch(1)
+    dataset = dataset.map(
+        map_func=lambda z: (
+            {
+                'real_images': tf.constant(127.5, dtype=tf.float32, shape=[3, resolution, resolution]),
+                'z': z,
+            }, tf.constant(0, dtype=tf.float32, shape=[])),
         num_parallel_calls=8
     )
 
@@ -48,18 +71,15 @@ def input_fn(tfrecord_base_dir, resolution, batch_size, is_training):
 
 
 def main():
-    # tf.enable_eager_execution()
-
-    # for images in dataset:
-    #     print()
-
-    tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq'
+    is_training = False
+    z_dim = 512
     resolution = 4
-    epochs = 1
-    batch_size = 1
-    is_training = True
-
-    dataset = input_fn(tfrecord_dir, resolution, batch_size, is_training)
+    if is_training:
+        tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq'
+        batch_size = 4
+        dataset = train_input_fn(tfrecord_dir, z_dim, resolution, batch_size)
+    else:
+        dataset = eval_input_fn(z_dim, resolution)
 
     iterator = dataset.make_one_shot_iterator()
     images, labels = iterator.get_next()
@@ -67,7 +87,8 @@ def main():
         while True:
             try:
                 feature, label = sess.run([images, labels])
-                image = feature['images']
+                imgs = feature['images']
+                z = feature['z']
                 print()
             except tf.errors.OutOfRangeError:
                 print('End of dataset')
