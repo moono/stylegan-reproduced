@@ -179,10 +179,6 @@ def model_fn(features, labels, mode, params):
     # PREDICTION & EVALUATION
     # ==================================================================================================================
     if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL:
-        # model_dir = params['trained_model_dir']
-        # variables_to_restore = ema.variables_to_restore()
-        # tf.train.init_from_checkpoint(model_dir, variables_to_restore)
-
         # get generator output
         new_g_params = g_params
         new_g_params['w_avg'] = ema.average(w_avg)

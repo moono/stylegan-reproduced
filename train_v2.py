@@ -106,9 +106,6 @@ def main():
                 'batch_size': batch_size,
                 'g_learning_rate': g_learning_rates.get(train_res, learning_rate_base),
                 'd_learning_rate': d_learning_rates.get(train_res, learning_rate_base),
-
-                # extra param
-                'trained_model_dir': model_dir
             },
             warm_start_from=ws
         )
