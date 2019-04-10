@@ -162,3 +162,37 @@ def lerp_clip(a, b, t):
     with tf.name_scope("LerpClip"):
         out = a + (b - a) * tf.clip_by_value(t, 0.0, 1.0)
     return out
+
+
+def torgb(x, res):
+    with tf.variable_scope('{:d}x{:d}'.format(res, res)):
+        with tf.variable_scope('ToRGB'):
+            x = equalized_conv2d(x, fmaps=3, kernel=1, gain=1.0, lrmul=1.0)
+            x = apply_bias(x, lrmul=1.0)
+    return x
+
+
+def fromrgb(x, res, n_f):
+    with tf.variable_scope('{:d}x{:d}'.format(res, res)):
+        with tf.variable_scope('FromRGB'):
+            x = equalized_conv2d(x, fmaps=n_f, kernel=1, gain=np.sqrt(2), lrmul=1.0)
+            x = apply_bias(x, lrmul=1.0)
+            x = tf.nn.leaky_relu(x)
+    return x
+
+
+def smooth_transition(prv, cur, res, transition_res, alpha):
+    # alpha == 1.0: use only previous resolution output
+    # alpha == 0.0: use only current resolution output
+
+    with tf.variable_scope('{:d}x{:d}'.format(res, res)):
+        with tf.variable_scope('smooth_transition'):
+            # use alpha for current resolution transition
+            if transition_res == res:
+                out = lerp_clip(cur, prv, alpha)
+
+            # ex) transition_res=32, current_res=16
+            # use res=16 block output
+            else:   # transition_res > res
+                out = lerp_clip(cur, prv, 0.0)
+    return out

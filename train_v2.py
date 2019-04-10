@@ -22,10 +22,10 @@ def get_vars_to_restore(res_to_restore):
 
 
 def main():
-    # model_save_base_dir = '/mnt/vision-nas/moono/trained_models/stylegan-reproduced'
-    # tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq'
-    model_save_base_dir = './models'
-    tfrecord_dir = './datasets/ffhq/tfrecords'
+    model_save_base_dir = '/mnt/vision-nas/moono/trained_models/stylegan-reproduced'
+    tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq'
+    # model_save_base_dir = './models'
+    # tfrecord_dir = './datasets/ffhq/tfrecords'
 
     # network specific parameters
     z_dim = 512
@@ -99,7 +99,6 @@ def main():
                 'truncation_cutoff': truncation_cutoff,
 
                 # additional training params
-                'train_res': train_res,
                 'resolutions': train_resolutions,
                 'featuremaps': train_featuremaps,
                 'train_trans_images_per_res': train_trans_images_per_res,

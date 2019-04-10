@@ -133,18 +133,26 @@ def model_fn(features, labels, mode, params):
     g_learning_rate = params['g_learning_rate']
     d_learning_rate = params['d_learning_rate']
 
+    # additional params
     train_res = resolutions[-1]
     w_ema_decay = params['w_ema_decay']
     is_training = mode == tf.estimator.ModeKeys.TRAIN
     global_step = tf.train.get_or_create_global_step()
 
-    # build network
-    z = features['z']
+    # set generator parameters
+    g_params = {
+        'w_dim': w_dim,
+        'n_mapping': n_mapping,
+        'resolutions': resolutions,
+        'featuremaps': featuremaps,
+        'w_ema_decay': w_ema_decay,
+        'style_mixing_prob': style_mixing_prob,
+        'truncation_psi': truncation_psi,
+        'truncation_cutoff': truncation_cutoff,
+    }
 
     # create additional variables & constants
     alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=tf.initializers.ones(),
-                            trainable=False, aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER)
-    w_avg = tf.get_variable('w_avg', shape=[w_dim], dtype=tf.float32, initializer=tf.initializers.zeros(),
                             trainable=False, aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER)
 
     # set training or non-training specific parameters
@@ -157,34 +165,17 @@ def model_fn(features, labels, mode, params):
         alpha_const = tf.constant(0.0, dtype=tf.float32, shape=[])
         alpha_assign_op = tf.assign(alpha, alpha_const)
 
-    # prepare exponential moving average for w
-    ema = tf.train.ExponentialMovingAverage(decay=w_ema_decay)
-    ema_op = ema.apply([w_avg])
+    # build network
+    z = features['z']
 
-    # set generator parameters
-    g_params = {
-        'alpha': alpha,
-        'w_avg': w_avg,
-        'z_dim': z_dim,
-        'w_dim': w_dim,
-        'n_mapping': n_mapping,
-        'resolutions': resolutions,
-        'featuremaps': featuremaps,
-        'style_mixing_prob': style_mixing_prob,
-        'truncation_psi': truncation_psi,
-        'truncation_cutoff': truncation_cutoff,
-    }
+    # create generator output
+    with tf.control_dependencies([alpha_assign_op]):
+        fake_images = generator(z, alpha, g_params, is_training=is_training)
 
     # ==================================================================================================================
     # PREDICTION & EVALUATION
     # ==================================================================================================================
     if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL:
-        # get generator output
-        new_g_params = g_params
-        new_g_params['w_avg'] = ema.average(w_avg)
-        with tf.control_dependencies([alpha_assign_op]):
-            fake_images = generator(z, new_g_params, is_training=False)
-
         predictions = {
             'fake_images': fake_images
         }
@@ -193,8 +184,8 @@ def model_fn(features, labels, mode, params):
 
         if mode == tf.estimator.ModeKeys.EVAL:
             # save some images
-            summary_fake_image = convert_to_rgb_images(fake_images)
-            tf.summary.image('fake_image', summary_fake_image, max_outputs=5)
+            summary_fake_images = convert_to_rgb_images(fake_images)
+            tf.summary.image('fake_images', summary_fake_images[:5], max_outputs=5)
             return tf.estimator.EstimatorSpec(mode=mode, loss=tf.constant(0.0, dtype=tf.float32, shape=[]),
                                               eval_metric_ops={}, predictions=predictions)
 
@@ -202,18 +193,24 @@ def model_fn(features, labels, mode, params):
     # TRAINING
     # ==================================================================================================================
     if mode == tf.estimator.ModeKeys.TRAIN:
+        # set discriminator parameters
+        d_params = {
+            'resolutions': resolutions,
+            'featuremaps': featuremaps,
+        }
+
+        # get real image input
         real_images = features['real_images']
 
-        # set generator & discriminator outputs
-        with tf.control_dependencies([alpha_assign_op, ema_op]):
+        # set training ops
+        with tf.control_dependencies([alpha_assign_op]):
             # preprocess input images
             real_images.set_shape([None, 3, train_res, train_res])
             real_images = preprocess_fit_train_image(real_images, train_res, alpha=alpha)
 
-            # get generator & discriminator outputs
-            fake_images = generator(z, g_params, is_training=True)
-            fake_scores = discriminator(fake_images, alpha, resolutions, featuremaps)
-            real_scores = discriminator(real_images, alpha, resolutions, featuremaps)
+            # get discriminator outputs
+            fake_scores = discriminator(fake_images, alpha, d_params)
+            real_scores = discriminator(real_images, alpha, d_params)
 
             # prepare appropriate training vars
             d_vars, g_vars = filter_trainable_variables(train_res)
@@ -224,21 +221,20 @@ def model_fn(features, labels, mode, params):
             # combine loss for tf.estimator architecture
             loss = d_loss + g_loss
 
-            # summaries
-            summary_real_image = convert_to_rgb_images(real_images)
-            summary_fake_image = convert_to_rgb_images(fake_images)
-            tf.summary.scalar('alpha', alpha)
-            tf.summary.scalar('d_loss_gan', d_loss_gan)
-            tf.summary.scalar('r1_penalty', r1_penalty)
-            tf.summary.scalar('d_loss', d_loss)
-            tf.summary.scalar('g_loss', g_loss)
-            tf.summary.image('real_images', summary_real_image[:5], max_outputs=5)
-            tf.summary.image('fake_image', summary_fake_image[:5], max_outputs=5)
-
             d_optimizer = tf.train.AdamOptimizer(g_learning_rate, beta1=0.0, beta2=0.99, epsilon=1e-8)
             g_optimizer = tf.train.AdamOptimizer(d_learning_rate, beta1=0.0, beta2=0.99, epsilon=1e-8)
             d_train_opt = d_optimizer.minimize(d_loss, var_list=d_vars)
             g_train_opt = g_optimizer.minimize(g_loss, var_list=g_vars, global_step=global_step)
             train_op = tf.group(d_train_opt, g_train_opt)
 
+        # add summaries
+        summary_real_images = convert_to_rgb_images(real_images)
+        summary_fake_images = convert_to_rgb_images(fake_images)
+        tf.summary.scalar('alpha', alpha)
+        tf.summary.scalar('d_loss_gan', d_loss_gan)
+        tf.summary.scalar('r1_penalty', r1_penalty)
+        tf.summary.scalar('d_loss', d_loss)
+        tf.summary.scalar('g_loss', g_loss)
+        tf.summary.image('real_images', summary_real_images[:5], max_outputs=5)
+        tf.summary.image('fake_images', summary_fake_images[:5], max_outputs=5)
         return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op, eval_metric_ops={}, predictions={})

@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from network_v2.official_code_ops import blur2d, downscale2d, minibatch_stddev_layer
 from network_v2.common_ops import (
-    equalized_dense, equalized_conv2d, conv2d_downscale2d, apply_bias, lerp_clip
+    equalized_dense, equalized_conv2d, conv2d_downscale2d, apply_bias, fromrgb, smooth_transition
 )
 
 
@@ -43,33 +43,11 @@ def discriminator_last_block(x, res, n_f0, n_f1):
     return x
 
 
-def fromrgb(x, res, n_f):
-    with tf.variable_scope('{:d}x{:d}'.format(res, res)):
-        with tf.variable_scope('FromRGB'):
-            x = equalized_conv2d(x, fmaps=n_f, kernel=1, gain=np.sqrt(2), lrmul=1.0)
-            x = apply_bias(x, lrmul=1.0)
-            x = tf.nn.leaky_relu(x)
-    return x
+def discriminator(images, alpha, d_params):
+    # set parameters
+    resolutions = d_params['resolutions']
+    featuremaps = d_params['featuremaps']
 
-
-def smooth_transition(prv, cur, res, transition_res, alpha):
-    # alpha == 1.0: use only previous resolution output
-    # alpha == 0.0: use only current resolution output
-
-    with tf.variable_scope('{:d}x{:d}'.format(res, res)):
-        with tf.variable_scope('smooth_transition'):
-            # use alpha for current resolution transition
-            if transition_res == res:
-                out = lerp_clip(cur, prv, alpha)
-
-            # ex) transition_res=32, current_res=16
-            # use res=16 block output
-            else:   # transition_res > res
-                out = lerp_clip(cur, prv, 0.0)
-    return out
-
-
-def discriminator(image, alpha, resolutions, featuremaps):
     # check input parameters
     assert len(resolutions) == len(featuremaps)
     assert len(resolutions) >= 2
@@ -83,8 +61,8 @@ def discriminator(image, alpha, resolutions, featuremaps):
 
     with tf.variable_scope('discriminator', reuse=tf.AUTO_REUSE):
         # set inputs
-        img = image
-        x = fromrgb(image, r_resolutions[0], r_featuremaps[0])
+        imgs = images
+        x = fromrgb(images, r_resolutions[0], r_featuremaps[0])
 
         # stack discriminator blocks
         for index, (res, n_f) in enumerate(zip(r_resolutions[:-1], r_featuremaps[:-1])):
@@ -92,8 +70,8 @@ def discriminator(image, alpha, resolutions, featuremaps):
             n_f_next = r_featuremaps[index + 1]
 
             x = discriminator_block(x, res, n_f, n_f_next)
-            img = downscale2d(img)
-            y = fromrgb(img, res_next, n_f_next)
+            imgs = downscale2d(imgs)
+            y = fromrgb(imgs, res_next, n_f_next)
             x = smooth_transition(y, x, res, transition_res, alpha)
 
         # last block
@@ -109,12 +87,16 @@ def test_discriminator_network(resolutions, featuremaps):
     from utils.utils import print_variables
 
     # prepare variables
-    zero_init = tf.initializers.zeros()
+    d_params = {
+        'resolutions': resolutions,
+        'featuremaps': featuremaps,
+    }
+
     input_image_res = resolutions[-1]
-    alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=zero_init, trainable=False)
+    alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=tf.initializers.zeros(), trainable=False)
 
     fake_images = tf.constant(0.5, dtype=tf.float32, shape=[1, 3, input_image_res, input_image_res])
-    fake_score = discriminator(fake_images, alpha, resolutions, featuremaps)
+    fake_score = discriminator(fake_images, alpha, d_params)
 
     print(fake_score.shape)
     print_variables()
