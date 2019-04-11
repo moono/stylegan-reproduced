@@ -110,6 +110,3 @@ venv.bak/
 *.tfrecords
 *.pkl
 official-pretrained/
-
-# image file
-*.png
