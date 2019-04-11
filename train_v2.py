@@ -27,6 +27,9 @@ def main():
     # model_save_base_dir = './models'
     # tfrecord_dir = './datasets/ffhq/tfrecords'
 
+    my_ram_size_in_gigabytes = 16
+    resume_res = None
+
     # network specific parameters
     z_dim = 512
     w_dim = 512
@@ -40,19 +43,25 @@ def main():
 
     # training specific parameters
     start_res = 8
-    # final_res = resolutions[-1]
-    # total_images = 70000
     train_fixed_images_per_res = 600000
     train_trans_images_per_res = 600000
     batch_size_base = 2
     learning_rate_base = 0.001
-    batch_sizes = {4: 64, 8: 64, 16: 64, 32: 32, 64: 16, 128: 8, 256: 4, 512: 2, 1024: 2}
+
+    # tf.contrib.distribute.MirroredStrategy():
+    # If you are batching your input data, we will place one batch on each GPU in each step.
+    # So your effective batch size will be num_gpus * batch_size.
+    # Therefore, consider adjusting your learning rate or batch size according to the number of GPUs
+    batch_sizes = {4: 128, 8: 128, 16: 128, 32: 64, 64: 32, 128: 16, 256: 8, 512: 4, 1024: 4}
     g_learning_rates = {128: 0.0015, 256: 0.002, 512: 0.003, 1024: 0.003}
     d_learning_rates = {128: 0.0015, 256: 0.002, 512: 0.003, 1024: 0.003}
 
     # find starting resolution for training
     start_train_index = resolutions.index(start_res)
     for ii, train_res in enumerate(resolutions[start_train_index:]):
+        if resume_res is not None and train_res < resume_res:
+            continue
+
         print('train_res: {}x{}'.format(train_res, train_res))
 
         # new resolutions & featuremaps
@@ -111,7 +120,7 @@ def main():
 
         # start training...
         train_spec = tf.estimator.TrainSpec(
-            input_fn=lambda: train_input_fn(tfrecord_dir, z_dim, train_res, batch_size),
+            input_fn=lambda: train_input_fn(tfrecord_dir, z_dim, train_res, batch_size, my_ram_size_in_gigabytes),
             max_steps=max_steps,
         )
         eval_spec = tf.estimator.EvalSpec(
