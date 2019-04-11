@@ -11,7 +11,7 @@ services:
       - "/mnt/vision-nas/moono/trained_models/stylegan-reproduced:/model-dir"
       - "/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq:/tfrecord-dir:ro"
     working_dir: "/work-dir"
-    command: ["python", "train.py",
+    command: ["python", "train_v2.py",
               "--model_base_dir", "/model-dir",
               "--tfrecord_dir", "/tfrecord-dir",
               "--my_ram_size_in_gigabytes", "64",
