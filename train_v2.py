@@ -1,4 +1,5 @@
 import os
+import argparse
 import numpy as np
 import tensorflow as tf
 
@@ -7,6 +8,15 @@ from network_v2.model_fn import model_fn
 
 
 tf.logging.set_verbosity(tf.logging.INFO)
+
+
+# global program arguments parser
+parser = argparse.ArgumentParser(description='')
+parser.add_argument('--model_base_dir', default='/mnt/vision-nas/moono/trained_models/stylegan-reproduced', type=str)
+parser.add_argument('--tfrecord_dir', default='/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq', type=str)
+parser.add_argument('--my_ram_size_in_gigabytes', default=16, type=int)
+parser.add_argument('--resume_res', default=None, type=int)
+args = vars(parser.parse_args())
 
 
 def get_vars_to_restore(res_to_restore):
@@ -22,13 +32,13 @@ def get_vars_to_restore(res_to_restore):
 
 
 def main():
-    model_save_base_dir = '/mnt/vision-nas/moono/trained_models/stylegan-reproduced'
-    tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq'
-    # model_save_base_dir = './models'
+    # global args
+    # model_base_dir = './models'
     # tfrecord_dir = './datasets/ffhq/tfrecords'
-
-    my_ram_size_in_gigabytes = 16
-    resume_res = None
+    model_base_dir = args['model_base_dir']
+    tfrecord_dir = args['tfrecord_dir']
+    my_ram_size_in_gigabytes = args['my_ram_size_in_gigabytes']
+    resume_res = args['resume_res']
 
     # network specific parameters
     z_dim = 512
@@ -73,7 +83,7 @@ def main():
         batch_size = batch_sizes.get(train_res, batch_size_base)
 
         # set model checkpoint saving locations
-        model_dir = os.path.join(model_save_base_dir, '{:d}x{:d}'.format(train_res, train_res))
+        model_dir = os.path.join(model_base_dir, '{:d}x{:d}'.format(train_res, train_res))
 
         # compute max training step for this resolution
         max_steps = int(np.ceil((train_fixed_images_per_res + train_trans_images_per_res) / batch_size))
@@ -84,7 +94,7 @@ def main():
         else:
             res_to_restore = resolutions[:resolutions.index(train_res)]
             prev_res = res_to_restore[-1]
-            ws_dir = os.path.join(model_save_base_dir, '{:d}x{:d}'.format(prev_res, prev_res))
+            ws_dir = os.path.join(model_base_dir, '{:d}x{:d}'.format(prev_res, prev_res))
             vars_to_warm_start = get_vars_to_restore(res_to_restore)
             ws = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=ws_dir, vars_to_warm_start=vars_to_warm_start)
 
