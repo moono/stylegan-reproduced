@@ -6,6 +6,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
     user: "2004:2004"
+    container_name: "moono_gpu01"
     volumes:
       - "/mnt/vision-nas/moono/git-repos/stylegan-reproduced:/work-dir"
       - "/mnt/vision-nas/moono/trained_models/stylegan-reproduced:/model-dir"
