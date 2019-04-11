@@ -14,6 +14,5 @@ services:
     command: ["python", "train_v2.py",
               "--model_base_dir", "/model-dir",
               "--tfrecord_dir", "/tfrecord-dir",
-              "--my_ram_size_in_gigabytes", "64",
-              "--resume_res", "None"
+              "--my_ram_size_in_gigabytes", "64"
     ]
