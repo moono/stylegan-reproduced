@@ -56,7 +56,9 @@ def compute_shuffle_buffer_size(my_ram_size_in_gigabytes, resolution):
 
 def train_input_fn(tfrecord_base_dir, z_dim, resolution, batch_size, my_ram_size_in_gigabytes, epoch=None):
     # compute shuffle buffer size
+    n_samples = 70000
     shuffle_buffer_size = compute_shuffle_buffer_size(my_ram_size_in_gigabytes, resolution)
+    shuffle_buffer_size = min(shuffle_buffer_size, n_samples + 1)
 
     fn_index = int(np.log2(resolution))
 
