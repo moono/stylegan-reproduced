@@ -9,7 +9,6 @@ from network_v2.model_fn_v3 import model_fn
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
-
 # ======================================================================================================================
 # tf.contrib.distribute.MirroredStrategy():
 # If you are batching your input data, we will place one batch on each GPU in each step.
@@ -29,24 +28,92 @@ parser.add_argument('--resume_res', default=None, type=int)
 args = vars(parser.parse_args())
 
 
-def get_vars_to_restore(res_to_restore, add_global_step=False):
+# def get_vars_to_restore(res_to_restore, add_global_step=False):
+#     vars_list = list()
+#     if add_global_step:
+#         vars_list.append('global_step')
+#     vars_list.append('w_avg')
+#     vars_list.append('^(?=.*(?:g_mapping))(?!.*(?:Adam)).*$')
+#
+#     for r in res_to_restore:
+#         res_str = '{:d}x{:d}'.format(r, r)
+#         regex_str = '^(?=.*(?:g_synthesis|' + res_str + '))(?!.*(?:Adam)).*$'
+#         vars_list.append(regex_str)
+#     for r in res_to_restore:
+#         res_str = '{:d}x{:d}'.format(r, r)
+#         regex_str = '^(?=.*(?:discriminator|' + res_str + '))(?!.*(?:Adam)).*$'
+#         vars_list.append(regex_str)
+#     return vars_list
+
+
+def get_vars_to_restore(res_to_restore, n_mapping=8, add_global_step=False):
     vars_list = list()
     if add_global_step:
         vars_list.append('global_step')
     vars_list.append('w_avg')
-    vars_list.append('g_mapping/*')
+
+    for idx in range(n_mapping):
+        vars_list.append('g_mapping/Dense{:d}/weight[^/]'.format(idx))
+        vars_list.append('g_mapping/Dense{:d}/bias[^/]'.format(idx))
 
     for r in res_to_restore:
-        vars_list.append('g_synthesis/{:d}x{:d}/*'.format(r, r))
+        if r == 4:
+            vars_list.append('g_synthesis/{:d}x{:d}/Const/const[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Const/Noise/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Const/bias[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Const/StyleMod/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Const/StyleMod/bias[^/]'.format(r, r))
+
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv/Noise/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv/bias[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv/StyleMod/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv/StyleMod/bias[^/]'.format(r, r))
+
+            vars_list.append('g_synthesis/{:d}x{:d}/ToRGB/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/ToRGB/bias[^/]'.format(r, r))
+        else:
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv0_up/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv0_up/Noise/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv0_up/bias[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv0_up/StyleMod/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv0_up/StyleMod/bias[^/]'.format(r, r))
+
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv1/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv1/Noise/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv1/bias[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv1/StyleMod/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/Conv1/StyleMod/bias[^/]'.format(r, r))
+
+            vars_list.append('g_synthesis/{:d}x{:d}/ToRGB/weight[^/]'.format(r, r))
+            vars_list.append('g_synthesis/{:d}x{:d}/ToRGB/bias[^/]'.format(r, r))
+
     for r in res_to_restore:
-        vars_list.append('discriminator/{:d}x{:d}/*'.format(r, r))
+        if r == 4:
+            vars_list.append('discriminator/{:d}x{:d}/FromRGB/weight[^/]'.format(r, r))
+            vars_list.append('discriminator/{:d}x{:d}/FromRGB/bias[^/]'.format(r, r))
+
+            vars_list.append('discriminator/{:d}x{:d}/Conv0/weight[^/]'.format(r, r))
+            vars_list.append('discriminator/{:d}x{:d}/Conv0/bias[^/]'.format(r, r))
+            vars_list.append('discriminator/{:d}x{:d}/Dense0/weight[^/]'.format(r, r))
+            vars_list.append('discriminator/{:d}x{:d}/Dense0/bias[^/]'.format(r, r))
+            vars_list.append('discriminator/{:d}x{:d}/Dense1/weight[^/]'.format(r, r))
+            vars_list.append('discriminator/{:d}x{:d}/Dense1/bias[^/]'.format(r, r))
+        else:
+            vars_list.append('discriminator/{:d}x{:d}/FromRGB/weight[^/]'.format(r, r))
+            vars_list.append('discriminator/{:d}x{:d}/FromRGB/bias[^/]'.format(r, r))
+
+            vars_list.append('discriminator/{:d}x{:d}/Conv0/weight[^/]'.format(r, r))
+            vars_list.append('discriminator/{:d}x{:d}/Conv0/bias[^/]'.format(r, r))
+            vars_list.append('discriminator/{:d}x{:d}/Conv1_down/weight[^/]'.format(r, r))
+            vars_list.append('discriminator/{:d}x{:d}/Conv1_down/bias[^/]'.format(r, r))
     return vars_list
 
 
-def set_training_ws(res_to_restore, model_base_dir, add_global_step=False):
+def set_training_ws(res_to_restore, model_base_dir, n_mapping=8, add_global_step=False):
     res = res_to_restore[-1]
     ws_dir = os.path.join(model_base_dir, '{:d}x{:d}'.format(res, res))
-    vars_to_warm_start = get_vars_to_restore(res_to_restore, add_global_step)
+    vars_to_warm_start = get_vars_to_restore(res_to_restore, n_mapping, add_global_step)
     ws = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=ws_dir, vars_to_warm_start=vars_to_warm_start)
     return ws
 
@@ -125,7 +192,9 @@ def main():
             continue
 
         do_train_trans = train_with_trans.get(train_res, True)
-        print('train_res: {}x{} with transition {}'.format(train_res, train_res, do_train_trans))
+        tf.logging.log(tf.logging.INFO,
+                       'train_res: {}x{} with transition {}'.format(train_res, train_res, do_train_trans))
+        # print('train_res: {}x{} with transition {}'.format(train_res, train_res, do_train_trans))
 
         # new resolutions & featuremaps
         original_train_res_index = resolutions.index(train_res)
@@ -164,15 +233,17 @@ def main():
         cur_res_to_restore = train_resolutions
 
         # transition training
-        print('transition training')
+        tf.logging.log(tf.logging.INFO, 'transition training')
+        # print('transition training')
         n_images = train_trans_images_per_res
-        ws = None if ii == 0 else set_training_ws(prv_res_to_restore, model_base_dir, add_global_step=False)
+        ws = None if ii == 0 else set_training_ws(prv_res_to_restore, model_base_dir, n_mapping, add_global_step=False)
         train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, ws)
 
         # fixed training
-        print('fixed training')
+        tf.logging.log(tf.logging.INFO, 'fixed training')
+        # print('fixed training')
         n_images += train_fixed_images_per_res
-        ws = set_training_ws(cur_res_to_restore, model_base_dir, add_global_step=True)
+        ws = set_training_ws(cur_res_to_restore, model_base_dir, n_mapping, add_global_step=True)
         train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, ws)
     return
 
