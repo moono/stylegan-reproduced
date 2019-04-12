@@ -93,7 +93,7 @@ def main():
     model_base_dir = args['model_base_dir']
     tfrecord_dir = args['tfrecord_dir']
     resume_res = args['resume_res']
-    model_base_dir = './models'
+    # model_base_dir = './models'
     # tfrecord_dir = './datasets/ffhq/tfrecords'
 
     # network specific parameters
@@ -109,8 +109,8 @@ def main():
 
     # training specific parameters
     start_res = 8
-    train_fixed_images_per_res = 60000
-    train_trans_images_per_res = 60000
+    train_fixed_images_per_res = 600000
+    train_trans_images_per_res = 600000
     train_with_trans = {4: False, 8: False, 16: True, 32: True, 64: True, 128: True, 256: True, 512: True, 1024: True}
     batch_size_base = 2
     learning_rate_base = 0.001
