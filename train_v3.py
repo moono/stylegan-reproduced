@@ -16,7 +16,7 @@ tf.logging.set_verbosity(tf.logging.INFO)
 # Therefore, consider adjusting your learning rate or batch size according to the number of GPUs
 
 # somehow using distribute strategy with tf.cond() to change / reset optimizer state causes error.
-# with single gpu it works fine but with multiple gpus it throws erro
+# with single gpu it works fine but with multiple gpus it throws error
 # ======================================================================================================================
 
 # global program arguments parser
@@ -28,85 +28,20 @@ parser.add_argument('--resume_res', default=None, type=int)
 args = vars(parser.parse_args())
 
 
-# def get_vars_to_restore(res_to_restore, add_global_step=False):
-#     vars_list = list()
-#     if add_global_step:
-#         vars_list.append('global_step')
-#     vars_list.append('w_avg')
-#     vars_list.append('^(?=.*(?:g_mapping))(?!.*(?:Adam)).*$')
-#
-#     for r in res_to_restore:
-#         res_str = '{:d}x{:d}'.format(r, r)
-#         regex_str = '^(?=.*(?:g_synthesis|' + res_str + '))(?!.*(?:Adam)).*$'
-#         vars_list.append(regex_str)
-#     for r in res_to_restore:
-#         res_str = '{:d}x{:d}'.format(r, r)
-#         regex_str = '^(?=.*(?:discriminator|' + res_str + '))(?!.*(?:Adam)).*$'
-#         vars_list.append(regex_str)
-#     return vars_list
-
-
+# exclude optimizer variables
 def get_vars_to_restore(res_to_restore, n_mapping=8, add_global_step=False):
     vars_list = list()
     if add_global_step:
         vars_list.append('global_step')
     vars_list.append('w_avg')
-
-    for idx in range(n_mapping):
-        vars_list.append('g_mapping/Dense{:d}/weight[^/]'.format(idx))
-        vars_list.append('g_mapping/Dense{:d}/bias[^/]'.format(idx))
+    vars_list.append('^(?=.*(?:g_mapping))(?!.*(?:Adam)).*$')
 
     for r in res_to_restore:
-        if r == 4:
-            vars_list.append('g_synthesis/{:d}x{:d}/Const/const[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Const/Noise/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Const/bias[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Const/StyleMod/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Const/StyleMod/bias[^/]'.format(r, r))
-
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv/Noise/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv/bias[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv/StyleMod/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv/StyleMod/bias[^/]'.format(r, r))
-
-            vars_list.append('g_synthesis/{:d}x{:d}/ToRGB/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/ToRGB/bias[^/]'.format(r, r))
-        else:
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv0_up/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv0_up/Noise/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv0_up/bias[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv0_up/StyleMod/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv0_up/StyleMod/bias[^/]'.format(r, r))
-
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv1/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv1/Noise/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv1/bias[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv1/StyleMod/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/Conv1/StyleMod/bias[^/]'.format(r, r))
-
-            vars_list.append('g_synthesis/{:d}x{:d}/ToRGB/weight[^/]'.format(r, r))
-            vars_list.append('g_synthesis/{:d}x{:d}/ToRGB/bias[^/]'.format(r, r))
-
+        regex_str = '^(?=.*g_synthesis\/{:d}x{:d})(?!.*(?:Adam)).*$'.format(r, r)
+        vars_list.append(regex_str)
     for r in res_to_restore:
-        if r == 4:
-            vars_list.append('discriminator/{:d}x{:d}/FromRGB/weight[^/]'.format(r, r))
-            vars_list.append('discriminator/{:d}x{:d}/FromRGB/bias[^/]'.format(r, r))
-
-            vars_list.append('discriminator/{:d}x{:d}/Conv0/weight[^/]'.format(r, r))
-            vars_list.append('discriminator/{:d}x{:d}/Conv0/bias[^/]'.format(r, r))
-            vars_list.append('discriminator/{:d}x{:d}/Dense0/weight[^/]'.format(r, r))
-            vars_list.append('discriminator/{:d}x{:d}/Dense0/bias[^/]'.format(r, r))
-            vars_list.append('discriminator/{:d}x{:d}/Dense1/weight[^/]'.format(r, r))
-            vars_list.append('discriminator/{:d}x{:d}/Dense1/bias[^/]'.format(r, r))
-        else:
-            vars_list.append('discriminator/{:d}x{:d}/FromRGB/weight[^/]'.format(r, r))
-            vars_list.append('discriminator/{:d}x{:d}/FromRGB/bias[^/]'.format(r, r))
-
-            vars_list.append('discriminator/{:d}x{:d}/Conv0/weight[^/]'.format(r, r))
-            vars_list.append('discriminator/{:d}x{:d}/Conv0/bias[^/]'.format(r, r))
-            vars_list.append('discriminator/{:d}x{:d}/Conv1_down/weight[^/]'.format(r, r))
-            vars_list.append('discriminator/{:d}x{:d}/Conv1_down/bias[^/]'.format(r, r))
+        regex_str = '^(?=.*discriminator\/{:d}x{:d})(?!.*(?:Adam)).*$'.format(r, r)
+        vars_list.append(regex_str)
     return vars_list
 
 
@@ -193,7 +128,7 @@ def main():
 
         do_train_trans = train_with_trans.get(train_res, True)
         tf.logging.log(tf.logging.INFO,
-                       'train_res: {}x{} with transition {}'.format(train_res, train_res, do_train_trans))
+                       '[moono]: train_res: {}x{} with transition {}'.format(train_res, train_res, do_train_trans))
         # print('train_res: {}x{} with transition {}'.format(train_res, train_res, do_train_trans))
 
         # new resolutions & featuremaps
@@ -233,14 +168,14 @@ def main():
         cur_res_to_restore = train_resolutions
 
         # transition training
-        tf.logging.log(tf.logging.INFO, 'transition training')
+        tf.logging.log(tf.logging.INFO, '[moono]: transition training')
         # print('transition training')
         n_images = train_trans_images_per_res
         ws = None if ii == 0 else set_training_ws(prv_res_to_restore, model_base_dir, n_mapping, add_global_step=False)
         train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, ws)
 
         # fixed training
-        tf.logging.log(tf.logging.INFO, 'fixed training')
+        tf.logging.log(tf.logging.INFO, '[moono]: fixed training')
         # print('fixed training')
         n_images += train_fixed_images_per_res
         ws = set_training_ws(cur_res_to_restore, model_base_dir, n_mapping, add_global_step=True)
