@@ -10,6 +10,13 @@ from network_v2.model_fn import model_fn
 tf.logging.set_verbosity(tf.logging.INFO)
 
 
+# ======================================================================================================================
+# tf.contrib.distribute.MirroredStrategy():
+# If you are batching your input data, we will place one batch on each GPU in each step.
+# So your effective batch size will be num_gpus * batch_size.
+# Therefore, consider adjusting your learning rate or batch size according to the number of GPUs
+# ======================================================================================================================
+
 # global program arguments parser
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('--model_base_dir', default='/mnt/vision-nas/moono/trained_models/stylegan-reproduced', type=str)
@@ -33,12 +40,12 @@ def get_vars_to_restore(res_to_restore):
 
 def main():
     # global args
-    # model_base_dir = './models'
-    # tfrecord_dir = './datasets/ffhq/tfrecords'
     model_base_dir = args['model_base_dir']
     tfrecord_dir = args['tfrecord_dir']
     my_ram_size_in_gigabytes = args['my_ram_size_in_gigabytes']
     resume_res = args['resume_res']
+    model_base_dir = './models'
+    # tfrecord_dir = './datasets/ffhq/tfrecords'
 
     # network specific parameters
     z_dim = 512
@@ -55,13 +62,9 @@ def main():
     start_res = 8
     train_fixed_images_per_res = 600000
     train_trans_images_per_res = 600000
+    train_with_trans = {4: False, 8: False, 16: True, 32: True, 64: True, 128: True, 256: True, 512: True, 1024: True}
     batch_size_base = 2
     learning_rate_base = 0.001
-
-    # tf.contrib.distribute.MirroredStrategy():
-    # If you are batching your input data, we will place one batch on each GPU in each step.
-    # So your effective batch size will be num_gpus * batch_size.
-    # Therefore, consider adjusting your learning rate or batch size according to the number of GPUs
     batch_sizes = {4: 128, 8: 128, 16: 128, 32: 64, 64: 32, 128: 16, 256: 8, 512: 4, 1024: 4}
     g_learning_rates = {128: 0.0015, 256: 0.002, 512: 0.003, 1024: 0.003}
     d_learning_rates = {128: 0.0015, 256: 0.002, 512: 0.003, 1024: 0.003}
@@ -72,7 +75,8 @@ def main():
         if resume_res is not None and train_res < resume_res:
             continue
 
-        print('train_res: {}x{}'.format(train_res, train_res))
+        do_train_trans = train_with_trans.get(train_res, True)
+        print('train_res: {}x{} with transition {}'.format(train_res, train_res, do_train_trans))
 
         # new resolutions & featuremaps
         original_train_res_index = resolutions.index(train_res)
@@ -85,9 +89,6 @@ def main():
         # set model checkpoint saving locations
         model_dir = os.path.join(model_base_dir, '{:d}x{:d}'.format(train_res, train_res))
 
-        # compute max training step for this resolution
-        max_steps = int(np.ceil((train_fixed_images_per_res + train_trans_images_per_res) / batch_size))
-
         # find variables to warm-start for this resolution
         if ii == 0:
             ws = None
@@ -98,7 +99,7 @@ def main():
             vars_to_warm_start = get_vars_to_restore(res_to_restore)
             ws = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=ws_dir, vars_to_warm_start=vars_to_warm_start)
 
-        # create estimator
+        # create estimator with distribution training ready
         distribution = tf.contrib.distribute.MirroredStrategy()
         run_config = tf.estimator.RunConfig(keep_checkpoint_max=1,
                                             save_checkpoints_steps=2000,
@@ -120,6 +121,7 @@ def main():
                 # additional training params
                 'resolutions': train_resolutions,
                 'featuremaps': train_featuremaps,
+                'do_train_trans': do_train_trans,
                 'train_trans_images_per_res': train_trans_images_per_res,
                 'batch_size': batch_size,
                 'g_learning_rate': g_learning_rates.get(train_res, learning_rate_base),
@@ -127,6 +129,9 @@ def main():
             },
             warm_start_from=ws
         )
+
+        # compute max training step for this resolution
+        max_steps = int(np.ceil((train_fixed_images_per_res + train_trans_images_per_res) / batch_size))
 
         # start training...
         train_spec = tf.estimator.TrainSpec(

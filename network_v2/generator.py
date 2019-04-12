@@ -149,8 +149,9 @@ def generator(z, alpha, g_params, is_training):
     assert len(resolutions) >= 2
 
     # more variables
-    w_avg = tf.get_variable('w_avg', shape=[w_dim], dtype=tf.float32, initializer=tf.initializers.zeros(),
-                            trainable=False, aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER)
+    with tf.variable_scope('', reuse=tf.AUTO_REUSE):
+        w_avg = tf.get_variable('w_avg', shape=[w_dim], dtype=tf.float32, initializer=tf.initializers.zeros(),
+                                trainable=False, aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER)
 
     # start building layers
     # mapping layers

@@ -48,7 +48,7 @@ def compute_shuffle_buffer_size(my_ram_size_in_gigabytes, resolution):
     image_shape = (3, resolution, resolution)
     uint8_in_bytes = np.dtype('uint8').itemsize
     bytes_per_image = np.prod(image_shape) * uint8_in_bytes
-    buffer_size_limit_in_gigabytes = max(1, my_ram_size_in_gigabytes // 8)
+    buffer_size_limit_in_gigabytes = max(1, my_ram_size_in_gigabytes // 16)
     buffer_size_limit_in_bytes = buffer_size_limit_in_gigabytes * (2 ** 30)
     shuffle_buffer_size = (buffer_size_limit_in_bytes - 1) // bytes_per_image + 1
     return shuffle_buffer_size
@@ -59,9 +59,9 @@ def train_input_fn(tfrecord_base_dir, z_dim, resolution, batch_size, my_ram_size
     n_samples = 70000
     shuffle_buffer_size = compute_shuffle_buffer_size(my_ram_size_in_gigabytes, resolution)
     shuffle_buffer_size = min(shuffle_buffer_size, n_samples + 1)
+    print('{}x{}: shuffle_buffer_size: {}'.format(resolution, resolution, shuffle_buffer_size))
 
     fn_index = int(np.log2(resolution))
-
     tfrecord_fn = os.path.join(tfrecord_base_dir, 'ffhq-r{:02d}.tfrecords'.format(fn_index))
 
     dataset = tf.data.TFRecordDataset(tfrecord_fn)
@@ -125,9 +125,11 @@ def test_memory_overflow():
 
     resolutions = [4, 8, 16, 32, 64, 128, 256, 512, 1024]
     batch_sizes = [128, 128, 128, 64, 32, 16, 8, 4, 4]
+    # resolutions = [256, 512, 1024]
+    # batch_sizes = [8, 4, 4]
     my_ram_size_in_gigabytes = 16
 
-    for res, batch_size in zip(resolutions[:-2], batch_sizes[:-2]):
+    for res, batch_size in zip(resolutions, batch_sizes):
         dataset = train_input_fn(tfrecord_dir, z_dim, res, batch_size, my_ram_size_in_gigabytes, epoch=1)
         iterator = dataset.make_one_shot_iterator()
         images, labels = iterator.get_next()
@@ -152,7 +154,7 @@ def test_memory_overflow():
 
 def main():
     test_memory_overflow()
-    test_input_fn()
+    # test_input_fn()
     return
 
 
