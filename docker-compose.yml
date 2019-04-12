@@ -28,5 +28,7 @@ services:
       - training
     volumes:
       - "/mnt/vision-nas/moono/trained_models/stylegan-reproduced:/model-dir:ro"
+    ports:
+      - "36006:6006"
     working_dir: "/model-dir"
     command: ["tensorboard", "--logdir", "./"]
