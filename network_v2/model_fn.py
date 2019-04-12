@@ -51,10 +51,7 @@ def preprocess_fit_train_image(images, res, alpha):
     return images
 
 
-def smooth_transition_state(batch_size, global_step, train_trans_images_per_res):
-    train_trans_images_per_res_tensor = tf.constant(train_trans_images_per_res, dtype=tf.float32, shape=[],
-                                                    name='train_trans_images_per_res')
-
+def smooth_transition_state(batch_size, global_step, train_trans_images_per_res_tensor, zero_constant):
     # alpha == 1.0: use only previous resolution output
     # alpha == 0.0: use only current resolution output
     n_cur_img = batch_size * global_step
@@ -62,8 +59,8 @@ def smooth_transition_state(batch_size, global_step, train_trans_images_per_res)
 
     is_transition_state = tf.less_equal(n_cur_img, train_trans_images_per_res_tensor)
     alpha = tf.cond(is_transition_state,
-                    true_fn=lambda: (train_trans_images_per_res - n_cur_img) / train_trans_images_per_res_tensor,
-                    false_fn=lambda: tf.constant(0.0, dtype=tf.float32, shape=[]))
+                    true_fn=lambda: (train_trans_images_per_res_tensor - n_cur_img) / train_trans_images_per_res_tensor,
+                    false_fn=lambda: zero_constant)
     return is_transition_state, alpha
 
 
@@ -156,28 +153,37 @@ def model_fn(features, labels, mode, params):
         'featuremaps': featuremaps,
     }
 
-    # additional variables (for training only)
-    # smooth transition variable
-    alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32,
-                            initializer=tf.initializers.ones() if do_train_trans else tf.initializers.zeros(),
-                            trainable=False, aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER)
-
-    # variable to check if we need to reset optimizer state or not
-    is_opt_resetted = tf.get_variable('is_opt_resetted', shape=[], dtype=tf.bool,
-                                      initializer=tf.initializers.zeros(),
-                                      trainable=False, aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER)
-
-    # determine smooth transition state and compute alpha value
-    is_transition_state, alpha_const = smooth_transition_state(batch_size, global_step, train_trans_images_per_res)
-    if do_train_trans:
-        alpha_assign_op = tf.assign(alpha, alpha_const)
-    else:
-        alpha_assign_op = tf.assign(alpha, tf.constant(0.0, dtype=tf.float32, shape=[]))
+    # additional variables
+    zero_constant = tf.constant(0.0, dtype=tf.float32, shape=[])
 
     # ==================================================================================================================
     # TRAINING
     # ==================================================================================================================
     if mode == tf.estimator.ModeKeys.TRAIN:
+        # additional variables (for training only)
+        train_trans_images_per_res_tensor = tf.constant(train_trans_images_per_res, dtype=tf.float32, shape=[],
+                                                        name='train_trans_images_per_res')
+
+        # smooth transition variable
+        alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32,
+                                initializer=tf.initializers.ones() if do_train_trans else tf.initializers.zeros(),
+                                trainable=False, aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER)
+
+        # variable to check if we need to reset optimizer state or not
+        is_opt_resetted = tf.get_variable('is_opt_resetted', shape=[], dtype=tf.bool,
+                                          initializer=tf.initializers.zeros(),
+                                          trainable=False, aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER)
+
+        # determine smooth transition state and compute alpha value
+        is_transition_state, alpha_const = smooth_transition_state(batch_size,
+                                                                   global_step,
+                                                                   train_trans_images_per_res_tensor,
+                                                                   zero_constant)
+        if do_train_trans:
+            alpha_assign_op = tf.assign(alpha, alpha_const)
+        else:
+            alpha_assign_op = tf.assign(alpha, zero_constant)
+
         # get inputs: latent z, real image input
         z = features['z']
         real_images = features['real_images']
@@ -213,7 +219,8 @@ def model_fn(features, labels, mode, params):
         opt_reset_cond = tf.logical_and(tf.logical_not(is_opt_resetted), tf.logical_not(is_transition_state))
         opt_reset_op = tf.cond(opt_reset_cond,
                                true_fn=lambda: tf.group(reset_optimizer_op, tf.assign(is_opt_resetted, True)),
-                               false_fn=lambda: tf.identity(is_transition_state))
+                               # false_fn=lambda: tf.identity(is_transition_state))
+                               false_fn=lambda: tf.no_op())
 
         # set training ops
         with tf.control_dependencies([opt_reset_op]):
@@ -222,7 +229,7 @@ def model_fn(features, labels, mode, params):
             train_op = tf.group(d_train_opt, g_train_opt)
 
         # add summaries
-        fake_images_eval = generator(z, tf.constant(0.0, dtype=tf.float32, shape=[]), g_params, is_training=False)
+        fake_images_eval = generator(z, zero_constant, g_params, is_training=False)
         summary_real_images = convert_to_rgb_images(real_images)
         summary_fake_images = convert_to_rgb_images(fake_images)
         summary_fake_images_eval = convert_to_rgb_images(fake_images_eval)
@@ -246,7 +253,7 @@ def model_fn(features, labels, mode, params):
         z = features['z']
 
         # create generator output for evalutation & prediction
-        fake_images_eval = generator(z, tf.constant(0.0, dtype=tf.float32, shape=[]), g_params, is_training=False)
+        fake_images_eval = generator(z, zero_constant, g_params, is_training=False)
 
         predictions = {
             'fake_images': fake_images_eval
@@ -258,5 +265,5 @@ def model_fn(features, labels, mode, params):
             # tf.summary.image not working on eval mode?
             # summary_fake_images_eval = convert_to_rgb_images(fake_images_eval)
             # tf.summary.image('fake_images_eval', summary_fake_images_eval[:5], max_outputs=5)
-            return tf.estimator.EstimatorSpec(mode=mode, loss=tf.constant(0.0, dtype=tf.float32, shape=[]),
+            return tf.estimator.EstimatorSpec(mode=mode, loss=zero_constant,
                                               eval_metric_ops={}, predictions=predictions)

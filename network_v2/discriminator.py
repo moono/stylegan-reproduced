@@ -52,6 +52,8 @@ def discriminator(images, alpha, d_params):
     assert len(resolutions) == len(featuremaps)
     assert len(resolutions) >= 2
 
+    tf.summary.scalar('alpha_discriminator', alpha)
+
     # discriminator's (resolutions and featuremaps) are reversed against generator's
     r_resolutions = resolutions[::-1]
     r_featuremaps = featuremaps[::-1]

@@ -148,6 +148,8 @@ def generator(z, alpha, g_params, is_training):
     assert len(resolutions) == len(featuremaps)
     assert len(resolutions) >= 2
 
+    tf.summary.scalar('alpha_generator', alpha)
+
     # more variables
     with tf.variable_scope('', reuse=tf.AUTO_REUSE):
         w_avg = tf.get_variable('w_avg', shape=[w_dim], dtype=tf.float32, initializer=tf.initializers.zeros(),
