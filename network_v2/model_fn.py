@@ -212,15 +212,11 @@ def model_fn(features, labels, mode, params):
         # check if we need to reset optimizer state
         opt_reset_cond = tf.logical_and(tf.logical_not(is_opt_resetted), tf.logical_not(is_transition_state))
         opt_reset_op = tf.cond(opt_reset_cond,
-                               true_fn=lambda: reset_optimizer_op,
-                               false_fn=lambda: tf.no_op())
-        opt_reset_flag_assign_op = tf.cond(opt_reset_cond,
-                                           true_fn=lambda: tf.assign(is_opt_resetted, True),
-                                           false_fn=lambda: tf.no_op())
-        # opt_reset_flag_assign_op = tf.identity(opt_reset_flag_assign_op)
+                               true_fn=lambda: tf.group(reset_optimizer_op, tf.assign(is_opt_resetted, True)),
+                               false_fn=lambda: tf.identity(is_transition_state))
 
         # set training ops
-        with tf.control_dependencies([opt_reset_op, opt_reset_flag_assign_op]):
+        with tf.control_dependencies([opt_reset_op]):
             d_train_opt = d_optimizer.minimize(d_loss, var_list=d_vars)
             g_train_opt = g_optimizer.minimize(g_loss, var_list=g_vars, global_step=global_step)
             train_op = tf.group(d_train_opt, g_train_opt)
