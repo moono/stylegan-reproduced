@@ -6,7 +6,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
     user: "2004:2004"
-    container_name: "moono_gpu01"
+    container_name: "moono_gpu_all"
     volumes:
       - "/mnt/vision-nas/moono/git-repos/stylegan-reproduced:/work-dir"
       - "/mnt/vision-nas/moono/trained_models/stylegan-reproduced:/model-dir"
@@ -15,5 +15,18 @@ services:
     command: ["python", "train_v2.py",
               "--model_base_dir", "/model-dir",
               "--tfrecord_dir", "/tfrecord-dir",
-              "--my_ram_size_in_gigabytes", "64"
+              "--my_ram_size_in_gigabytes", "256"
     ]
+  watching:
+    image: moono/tf-1.13-gpu:latest
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    user: "2004:2004"
+    container_name: "moono_tensorboard"
+    depends_on:
+      - training
+    volumes:
+      - "/mnt/vision-nas/moono/trained_models/stylegan-reproduced:/model-dir:ro"
+    working_dir: "/model-dir"
+    command: ["tensorboard", "--logdir", "./"]

@@ -44,7 +44,7 @@ def main():
     tfrecord_dir = args['tfrecord_dir']
     my_ram_size_in_gigabytes = args['my_ram_size_in_gigabytes']
     resume_res = args['resume_res']
-    model_base_dir = './models'
+    # model_base_dir = './models'
     # tfrecord_dir = './datasets/ffhq/tfrecords'
 
     # network specific parameters
