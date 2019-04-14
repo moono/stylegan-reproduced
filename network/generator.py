@@ -1,8 +1,8 @@
 import numpy as np
 import tensorflow as tf
 
-from network_v2.official_code_ops import blur2d, upscale2d
-from network_v2.common_ops import (
+from network.official_code_ops import blur2d, upscale2d
+from network.common_ops import (
     equalized_dense, equalized_conv2d, upscale2d_conv2d, apply_bias, apply_noise,
     pixel_norm, adaptive_instance_norm, lerp, torgb, smooth_transition
 )

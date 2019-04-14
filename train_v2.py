@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 from datasets.ffhq.ffhq_dataset import train_input_fn, eval_input_fn
-from network_v2.model_fn_old import model_fn
+from network.model_fn_old import model_fn
 
 
 tf.logging.set_verbosity(tf.logging.INFO)

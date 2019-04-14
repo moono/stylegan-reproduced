@@ -1,9 +1,9 @@
 import numpy as np
 import tensorflow as tf
 
-from network_v2.common_ops import lerp
-from network_v2.generator import generator
-from network_v2.discriminator import discriminator
+from network.common_ops import lerp
+from network.generator import generator
+from network.discriminator import discriminator
 
 
 def adjust_dynamic_range(images):
@@ -61,7 +61,7 @@ def smooth_transition_state(batch_size, global_step, train_trans_images_per_res_
     alpha = tf.cond(is_transition_state,
                     true_fn=lambda: (train_trans_images_per_res_tensor - n_cur_img) / train_trans_images_per_res_tensor,
                     false_fn=lambda: zero_constant)
-    return is_transition_state, alpha
+    return alpha
 
 
 def filter_trainable_variables(res):
@@ -153,37 +153,29 @@ def model_fn(features, labels, mode, params):
         'featuremaps': featuremaps,
     }
 
-    # additional variables
+    # additional variables (reuse zero constants)
     zero_constant = tf.constant(0.0, dtype=tf.float32, shape=[])
+
+    # additional variables (for training only)
+    train_trans_images_per_res_tensor = tf.constant(train_trans_images_per_res, dtype=tf.float32, shape=[],
+                                                    name='train_trans_images_per_res')
+
+    # smooth transition variable
+    alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32,
+                            initializer=tf.initializers.ones() if do_train_trans else tf.initializers.zeros(),
+                            trainable=False, aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER)
+
+    # determine smooth transition state and compute alpha value
+    alpha_const = smooth_transition_state(batch_size, global_step, train_trans_images_per_res_tensor, zero_constant)
+    if do_train_trans:
+        alpha_assign_op = tf.assign(alpha, alpha_const)
+    else:
+        alpha_assign_op = tf.assign(alpha, zero_constant)
 
     # ==================================================================================================================
     # TRAINING
     # ==================================================================================================================
     if mode == tf.estimator.ModeKeys.TRAIN:
-        # additional variables (for training only)
-        train_trans_images_per_res_tensor = tf.constant(train_trans_images_per_res, dtype=tf.float32, shape=[],
-                                                        name='train_trans_images_per_res')
-
-        # smooth transition variable
-        alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32,
-                                initializer=tf.initializers.ones() if do_train_trans else tf.initializers.zeros(),
-                                trainable=False, aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER)
-
-        # variable to check if we need to reset optimizer state or not
-        is_opt_resetted = tf.get_variable('is_opt_resetted', shape=[], dtype=tf.bool,
-                                          initializer=tf.initializers.zeros(),
-                                          trainable=False, aggregation=tf.VariableAggregation.ONLY_FIRST_TOWER)
-
-        # determine smooth transition state and compute alpha value
-        is_transition_state, alpha_const = smooth_transition_state(batch_size,
-                                                                   global_step,
-                                                                   train_trans_images_per_res_tensor,
-                                                                   zero_constant)
-        if do_train_trans:
-            alpha_assign_op = tf.assign(alpha, alpha_const)
-        else:
-            alpha_assign_op = tf.assign(alpha, zero_constant)
-
         # get inputs: latent z, real image input
         z = features['z']
         real_images = features['real_images']
@@ -210,31 +202,18 @@ def model_fn(features, labels, mode, params):
         # combine loss for tf.estimator architecture
         loss = d_loss + g_loss
 
-        # prepare optimizer & reset ops
+        # prepare optimizer & training ops
         d_optimizer = tf.train.AdamOptimizer(g_learning_rate, beta1=0.0, beta2=0.99, epsilon=1e-8)
         g_optimizer = tf.train.AdamOptimizer(d_learning_rate, beta1=0.0, beta2=0.99, epsilon=1e-8)
-        reset_optimizer_op = tf.variables_initializer(d_optimizer.variables() + g_optimizer.variables())
-
-        # check if we need to reset optimizer state
-        opt_reset_cond = tf.logical_and(tf.logical_not(is_opt_resetted), tf.logical_not(is_transition_state))
-        opt_reset_op = tf.cond(opt_reset_cond,
-                               true_fn=lambda: tf.group(reset_optimizer_op, tf.assign(is_opt_resetted, True)),
-                               # false_fn=lambda: tf.identity(is_transition_state))
-                               false_fn=lambda: tf.no_op())
-
-        # set training ops
-        with tf.control_dependencies([opt_reset_op]):
-            d_train_opt = d_optimizer.minimize(d_loss, var_list=d_vars)
-            g_train_opt = g_optimizer.minimize(g_loss, var_list=g_vars, global_step=global_step)
-            train_op = tf.group(d_train_opt, g_train_opt)
+        d_train_opt = d_optimizer.minimize(d_loss, var_list=d_vars)
+        g_train_opt = g_optimizer.minimize(g_loss, var_list=g_vars, global_step=global_step)
+        train_op = tf.group(d_train_opt, g_train_opt)
 
         # add summaries
         fake_images_eval = generator(z, zero_constant, g_params, is_training=False)
         summary_real_images = convert_to_rgb_images(real_images)
         summary_fake_images = convert_to_rgb_images(fake_images)
         summary_fake_images_eval = convert_to_rgb_images(fake_images_eval)
-        tf.summary.scalar('is_opt_resetted', tf.cast(is_opt_resetted, dtype=tf.int32))
-        tf.summary.scalar('is_transition_state', tf.cast(is_transition_state, dtype=tf.int32))
         tf.summary.scalar('alpha', alpha)
         tf.summary.scalar('d_loss_gan', d_loss_gan)
         tf.summary.scalar('r1_penalty', r1_penalty)

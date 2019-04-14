@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 import cv2
 
-from network_v2.generator import generator
+from network.generator import generator
 
 
 def variables_to_restore():
