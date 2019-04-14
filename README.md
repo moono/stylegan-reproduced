@@ -31,8 +31,7 @@
 * It recreate tf.estimator object every time it needs to change resolution or or clear the optimizer states
 * run [training code]
 
-### Implementation details
-* Organize how implementation is intended
+### Key implementations in official code
 * Check [implementations]
 
 [tf.contrib.distribute]: https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/MirroredStrategy
