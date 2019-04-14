@@ -39,5 +39,5 @@
 [official-output]: ./assets/example.png
 [current-output]: ./assets/from-official-weights.png
 [tf.estimator]: https://www.tensorflow.org/guide/estimators
-[training code]: ./train_v3.py
+[training code]: train.py
 [implementations]: ./implementations.md
