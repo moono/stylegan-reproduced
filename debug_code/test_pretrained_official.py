@@ -5,7 +5,7 @@ import cv2
 
 
 def test_generator_official():
-    from test_code.stylegan_official import G_style
+    from debug_code.stylegan_official import G_style
 
     # prepare generator variables
     is_training = False

@@ -6,7 +6,7 @@ import cv2
 
 
 def test_generator_v2():
-    from test_code.stylegan_v2 import generator
+    from debug_code.stylegan_v2 import generator
 
     # prepare variables
     z_dim = 512

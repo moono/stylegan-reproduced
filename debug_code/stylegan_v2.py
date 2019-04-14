@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 
-from test_code.common_ops import *
+from debug_code.common_ops import *
 
 
 def g_mapping(z, w_dim, n_mapping, n_broadcast):
