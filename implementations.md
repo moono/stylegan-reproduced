@@ -10,9 +10,9 @@
 * alpha is flipped in official code
 * `implementation_alpha = (1.0 - paper_alpha)`
 
-
 ### Minibatch standard deviations
 * Adding a minibatch layer towards the end of the discriminator.
+
 ```python
 def minibatch_stddev_layer(x, group_size=4, num_new_features=1):
     with tf.variable_scope('MinibatchStddev'):
@@ -33,7 +33,8 @@ def minibatch_stddev_layer(x, group_size=4, num_new_features=1):
 ### Equalized learning rate
 * initialize weights via `N(0, 1)` but scales with per-layer normalization constant from He’s initializer.
 * `w^_i = w_i / c`
-* `c = gain * sqrt(1.0/number_of_inputs)` 
+* `c = sqrt(2.0/number_of_inputs)` 
+* Reduced learning rate for fully connected layers in mapping network: `lambda^ = 0.01 * lambda`
 
 ```python
 def get_weight(weight_shape, gain, lrmul):
@@ -49,7 +50,6 @@ def get_weight(weight_shape, gain, lrmul):
                              initializer=tf.initializers.random_normal(0, init_std)) * runtime_coef
     return weight
 ```
-    
 
 ## From the paper [StyleGAN]
 
@@ -60,6 +60,7 @@ def get_weight(weight_shape, gain, lrmul):
 ### AdaIN
 * Learned affine transformations then specialize w to styles `y = (y_s, y_b)` that control adaptive instance normalization (AdaIN) operations after each convolution layer of the synthesis network g.
 * ![][StyleGAN-eq01]
+
 ```python
 def instance_norm(x, epsilon=1e-8):
     # x: [?, 512, h, w]
@@ -105,6 +106,7 @@ def adaptive_instance_norm(x, w):
 
 ### Style mixing regularizations
 * To further encourage the styles to localize, we employ mixing regularization, where a given percentage of images are generated using two random latent codes instead of one during training.
+
 ```python
 def style_mixing_regularization(z, w_dim, w_broadcasted, n_mapping, n_broadcast,
                                 train_res_block_idx, style_mixing_prob):
