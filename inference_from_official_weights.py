@@ -5,9 +5,10 @@ import tensorflow as tf
 import cv2
 
 from network.generator import generator
+from utils.utils import post_process_generator_output
 
 
-def variables_to_restore():
+def official_code_variables_to_restore():
     lod = int(np.log2(1024))
     t_vars = tf.trainable_variables()
     var_mapping = dict()
@@ -57,7 +58,7 @@ def test_generator():
     fake_images = generator(z, alpha, g_params, is_training)
 
     # assign which variables to retore
-    var_mapping = variables_to_restore()
+    var_mapping = official_code_variables_to_restore()
     pprint.pprint(var_mapping)
 
     # restore tools
@@ -69,8 +70,6 @@ def test_generator():
     # set same input status as official's
     rnd = np.random.RandomState(5)
     z_input_np = rnd.randn(1, z_dim)
-    drange_min, drange_max = -1.0, 1.0
-    scale = 255.0 / (drange_max - drange_min)
 
     # generate image with official weights
     with tf.Session() as sess:
@@ -80,11 +79,7 @@ def test_generator():
         output = sess.run(fake_images, feed_dict={z: z_input_np})
         print(output.shape)
 
-        output = np.squeeze(output, axis=0)
-        output = np.transpose(output, axes=[1, 2, 0])
-        output = output * scale + (0.5 - drange_min * scale)
-        output = np.clip(output, 0, 255)
-        output = output.astype('uint8')
+        output = post_process_generator_output(output)
         output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
 
         out_fn = os.path.join(image_out_dir, 'from-official-weights.png')

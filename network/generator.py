@@ -138,10 +138,10 @@ def generator(z, alpha, g_params, is_training):
     n_mapping = g_params['n_mapping']
     resolutions = g_params['resolutions']
     featuremaps = g_params['featuremaps']
-    w_ema_decay = g_params['w_ema_decay']
-    style_mixing_prob = g_params['style_mixing_prob']
-    truncation_psi = g_params['truncation_psi']
-    truncation_cutoff = g_params['truncation_cutoff']
+    w_ema_decay = g_params.get('w_ema_decay', None)
+    style_mixing_prob = g_params.get('style_mixing_prob', None)
+    truncation_psi = g_params.get('truncation_psi', None)
+    truncation_cutoff = g_params.get('truncation_cutoff', None)
     train_res_block_idx = len(resolutions) - 1
 
     # check input parameters
