@@ -29,7 +29,7 @@ args = vars(parser.parse_args())
 
 
 # exclude optimizer variables
-def get_vars_to_restore(res_to_restore, n_mapping=8, add_global_step=False):
+def get_vars_to_restore(res_to_restore, add_global_step=False):
     vars_list = list()
     if add_global_step:
         vars_list.append('global_step')
@@ -45,10 +45,10 @@ def get_vars_to_restore(res_to_restore, n_mapping=8, add_global_step=False):
     return vars_list
 
 
-def set_training_ws(res_to_restore, model_base_dir, n_mapping=8, add_global_step=False):
+def set_training_ws(res_to_restore, model_base_dir, add_global_step=False):
     res = res_to_restore[-1]
     ws_dir = os.path.join(model_base_dir, '{:d}x{:d}'.format(res, res))
-    vars_to_warm_start = get_vars_to_restore(res_to_restore, n_mapping, add_global_step)
+    vars_to_warm_start = get_vars_to_restore(res_to_restore, add_global_step)
     ws = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=ws_dir, vars_to_warm_start=vars_to_warm_start)
     return ws
 
@@ -171,14 +171,14 @@ def main():
         tf.logging.log(tf.logging.INFO, '[moono]: transition training')
         # print('transition training')
         n_images = train_trans_images_per_res
-        ws = None if ii == 0 else set_training_ws(prv_res_to_restore, model_base_dir, n_mapping, add_global_step=False)
+        ws = None if ii == 0 else set_training_ws(prv_res_to_restore, model_base_dir, add_global_step=False)
         train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, ws)
 
         # fixed training
         tf.logging.log(tf.logging.INFO, '[moono]: fixed training')
         # print('fixed training')
         n_images += train_fixed_images_per_res
-        ws = set_training_ws(cur_res_to_restore, model_base_dir, n_mapping, add_global_step=True)
+        ws = set_training_ws(cur_res_to_restore, model_base_dir, add_global_step=True)
         train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, ws)
     return
 
