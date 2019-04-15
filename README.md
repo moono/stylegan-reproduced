@@ -1,14 +1,10 @@
 # stylegan-reproduced
 * This repoitory is intended to understand official StyleGAN code from [https://github.com/NVlabs/stylegan](https://github.com/NVlabs/stylegan)
 * Most of the code is just copy of original source code
-* In this Repository, I tried to remove tflib and some if/else statements that is annoying to see
-* If you need fully adjustable/customizable code with all parameter settings, go with official one
+* In this Repository, I tried to remove tflib and some if/else statements from official code
 
 ## Current status
 * checking if training works
-
-## Dataset
-* Download & setup from [ffhq-dataset](https://github.com/NVlabs/ffhq-dataset)
 
 ## Requirements
 * Tensorflow >= 1.13 
@@ -16,28 +12,34 @@
 
 ## Steps to reproduce
 
+### Dataset
+* Download & setup from [ffhq-dataset](https://github.com/NVlabs/ffhq-dataset)
+
 ### To check the generator network is properly copied
 1. export pretrained weight from official code
 2. set variable names to current implementation
-3. try to generate from official weights ([inference_example_code])
+3. try to generate from official weights ([inference_from_official_model])
 4. check the result
-    
+
 | official output | current implementation |
 |:---------------:|:----------------------:|
 |![][official-output]|![][current-output]|
 
-### Training - progressive training
+### Training
 * Trying to use native tensorflow training framework ([tf.estimator])
-* It recreate tf.estimator object every time it needs to change resolution or or clear the optimizer states
-* run [training code]
+* It recreates tf.estimator object every time it needs to change resolution or transition state is over to clear the optimizer states
+* Run [training code]
+* Current training status - 512x512
+![][Training-progress-512x512]
 
 ### Key implementations in official code
 * Check [implementations]
 
 [tf.contrib.distribute]: https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/MirroredStrategy
-[inference_example_code]: ./inference_from_official_weights.py
+[inference_from_official_model]: ./inference_from_official_weights.py
 [official-output]: ./assets/example.png
 [current-output]: ./assets/from-official-weights.png
+[Training-progress-512x512]: ./assets/Training-progress-512x512.png
 [tf.estimator]: https://www.tensorflow.org/guide/estimators
 [training code]: train.py
 [implementations]: ./implementations.md

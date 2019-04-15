@@ -139,6 +139,26 @@ def truncation_trick(n_broadcast, w_broadcasted, w_avg, truncation_psi, truncati
     return w_broadcasted
 ```
 
+### Losses
+* logistic nonsaturating with gradient penalty
+```python
+def compute_loss(real_images, real_scores, fake_scores):
+    r1_gamma, r2_gamma = 10.0, 0.0
+
+    # discriminator loss: gradient penalty
+    d_loss_gan = tf.nn.softplus(fake_scores) + tf.nn.softplus(-real_scores)
+    real_loss = tf.reduce_sum(real_scores)
+    real_grads = tf.gradients(real_loss, [real_images])[0]
+    r1_penalty = tf.reduce_sum(tf.square(real_grads), axis=[1, 2, 3])
+    # r1_penalty = tf.reduce_mean(r1_penalty)
+    d_loss = d_loss_gan + r1_penalty * (r1_gamma * 0.5)
+    d_loss = tf.reduce_mean(d_loss)
+
+    # generator loss: logistic nonsaturating
+    g_loss = tf.nn.softplus(-fake_scores)
+    g_loss = tf.reduce_mean(g_loss)
+    return d_loss, g_loss, tf.reduce_mean(d_loss_gan), tf.reduce_mean(r1_penalty)
+```
 
 [PGGAN]: https://arxiv.org/abs/1710.10196
 [StyleGAN]: https://arxiv.org/abs/1812.04948
