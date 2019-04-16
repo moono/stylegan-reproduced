@@ -25,6 +25,7 @@ parser.add_argument('--model_base_dir', default='/mnt/vision-nas/moono/trained_m
 parser.add_argument('--tfrecord_dir', default='/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq', type=str)
 parser.add_argument('--my_ram_size_in_gigabytes', default=16, type=int)
 parser.add_argument('--resume_res', default=None, type=int)
+parser.add_argument('--resume_transition', default=None, type=int)
 args = vars(parser.parse_args())
 
 
@@ -95,6 +96,9 @@ def main():
     model_base_dir = args['model_base_dir']
     tfrecord_dir = args['tfrecord_dir']
     resume_res = args['resume_res']
+    resume_transition = args['resume_transition']
+    if resume_res is None:
+        resume_transition = None
     # model_base_dir = './models'
     # tfrecord_dir = './datasets/ffhq/tfrecords'
 
@@ -167,19 +171,29 @@ def main():
         prv_res_to_restore = train_resolutions[:-1]
         cur_res_to_restore = train_resolutions
 
-        # transition training
-        tf.logging.log(tf.logging.INFO, '[moono]: transition training')
-        # print('transition training')
-        n_images = train_trans_images_per_res
-        ws = None if ii == 0 else set_training_ws(prv_res_to_restore, model_base_dir, add_global_step=False)
-        train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, ws)
-
-        # fixed training
-        tf.logging.log(tf.logging.INFO, '[moono]: fixed training')
-        # print('fixed training')
-        n_images += train_fixed_images_per_res
-        ws = set_training_ws(cur_res_to_restore, model_base_dir, add_global_step=True)
-        train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, ws)
+        if resume_res is not None and resume_res == train_res:
+            if resume_transition:
+                tf.logging.log(tf.logging.INFO, '[moono]: resume transition training')
+                n_images = train_trans_images_per_res
+                train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, estimator_ws=None)
+            else:
+                tf.logging.log(tf.logging.INFO, '[moono]: resume fixed training')
+                n_images = train_trans_images_per_res + train_fixed_images_per_res
+                train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, estimator_ws=None)
+        else:
+            # transition training
+            tf.logging.log(tf.logging.INFO, '[moono]: transition training')
+            # print('transition training')
+            n_images = train_trans_images_per_res
+            ws = None if ii == 0 else set_training_ws(prv_res_to_restore, model_base_dir, add_global_step=False)
+            train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, ws)
+    
+            # fixed training
+            tf.logging.log(tf.logging.INFO, '[moono]: fixed training')
+            # print('fixed training')
+            n_images = train_trans_images_per_res + train_fixed_images_per_res
+            ws = set_training_ws(cur_res_to_restore, model_base_dir, add_global_step=True)
+            train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, ws)
     return
 
 
