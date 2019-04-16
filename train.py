@@ -94,9 +94,6 @@ def train(model_dir, tfrecord_dir, train_res, n_images, estimator_params, estima
 
 
 def main():
-    import pprint
-    pprint.pprint(args)
-
     # global args
     model_base_dir = args['model_base_dir']
     tfrecord_dir = args['tfrecord_dir']
@@ -104,8 +101,6 @@ def main():
     resume_transition = args['resume_transition']
     if resume_res is None:
         resume_transition = None
-    # model_base_dir = './models'
-    # tfrecord_dir = './datasets/ffhq/tfrecords'
 
     # network specific parameters
     z_dim = 512
