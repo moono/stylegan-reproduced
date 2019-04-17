@@ -90,7 +90,7 @@ def train_input_fn(tfrecord_base_dir, z_dim, resolution, batch_size, my_ram_size
     return dataset
 
 
-def test_input_fn():
+def test_input_fn(tfrecord_dir):
     is_training = True
     z_dim = 512
     resolution = 256
@@ -98,7 +98,6 @@ def test_input_fn():
 
     # in_mb = image_mb * buffer_size
     if is_training:
-        tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq'
         batch_size = 8
         dataset = train_input_fn(tfrecord_dir, z_dim, resolution, batch_size, my_ram_size_in_gigabytes)
     else:
@@ -119,22 +118,26 @@ def test_input_fn():
     return
 
 
-def test_memory_overflow():
-    tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq'
+def test_memory_overflow(tfrecord_dir):
     z_dim = 512
 
-    resolutions = [4, 8, 16, 32, 64, 128, 256, 512, 1024]
-    batch_sizes = [128, 128, 128, 64, 32, 16, 8, 4, 4]
-    # resolutions = [256, 512, 1024]
-    # batch_sizes = [8, 4, 4]
+    # resolutions = [4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    # batch_sizes = [128, 128, 128, 64, 32, 16, 8, 4, 4]
+    resolutions = [256, 512, 1024]
+    batch_sizes = [8, 4, 4]
     my_ram_size_in_gigabytes = 16
 
+    n_samples = 70000
+    n_images_to_show_on_training = 600000 * 2
+    approx_epochs = int(np.ceil(n_images_to_show_on_training / n_samples))
     for res, batch_size in zip(resolutions, batch_sizes):
-        dataset = train_input_fn(tfrecord_dir, z_dim, res, batch_size, my_ram_size_in_gigabytes, epoch=1)
+        approx_max_step = int(np.ceil(approx_epochs * n_samples / batch_size))
+        print('[{:d}x{:d}] approx_max_step: {}'.format(res, res, approx_max_step))
+        dataset = train_input_fn(tfrecord_dir, z_dim, res, batch_size, my_ram_size_in_gigabytes, epoch=approx_epochs)
         iterator = dataset.make_one_shot_iterator()
         images, labels = iterator.get_next()
 
-        index = 0
+        step = 0
         with tf.Session() as sess:
             while True:
                 try:
@@ -142,10 +145,10 @@ def test_memory_overflow():
                     imgs = feature['real_images']
                     z = feature['z']
 
-                    if index % 100 == 0:
-                        print('image shape: {}'.format(imgs.shape))
+                    if step % 1000 == 0:
+                        print('{}/{}: {}'.format(step, approx_max_step, imgs.shape))
 
-                    index += 1
+                    step += 1
                 except tf.errors.OutOfRangeError:
                     print('End of dataset')
                     break
@@ -153,8 +156,11 @@ def test_memory_overflow():
 
 
 def main():
-    test_memory_overflow()
-    # test_input_fn()
+    # tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq'
+    tfrecord_dir = './tfrecords'
+
+    test_memory_overflow(tfrecord_dir)
+    # test_input_fn(tfrecord_dir)
     return
 
 
