@@ -1,6 +1,6 @@
 # stylegan-reproduced
 * This repoitory is intended to understand official StyleGAN code from [https://github.com/NVlabs/stylegan](https://github.com/NVlabs/stylegan)
-* Most of the code is just copy of original source code
+* Most of the code is __just copy__ of original source code
 * In this Repository, I tried to remove tflib and some if/else statements from official code
 
 ## Current status
@@ -9,6 +9,9 @@
 ## Requirements
 * Tensorflow >= 1.13 
 * tensorflow estimator and [tf.contrib.distribute] for multi-GPU
+
+## Environment
+* V100 GPU x 4
 
 ## Steps to reproduce
 
@@ -28,9 +31,9 @@
 ### Training
 * Trying to use native tensorflow training framework ([tf.estimator])
 * It recreates tf.estimator object every time it needs to change resolution or transition state is over to clear the optimizer states
-* Run [training code]
-* Current training status - 512x512
-![][Training-progress-512x512]
+* Run `train.py`
+* Current training status - 1024x1024
+![][Training-progress-1024x1024]
 
 ### Key implementations in official code
 * Check [implementations]
@@ -40,6 +43,7 @@
 [official-output]: ./assets/example.png
 [current-output]: ./assets/from-official-weights.png
 [Training-progress-512x512]: ./assets/Training-progress-512x512.png
+[Training-progress-1024x1024]: ./assets/Training-progress-1024x1024.png
 [tf.estimator]: https://www.tensorflow.org/guide/estimators
 [training code]: train.py
 [implementations]: ./implementations.md
