@@ -48,13 +48,11 @@ def test_generator():
         'n_mapping': 8,
         'resolutions': [4, 8, 16, 32, 64, 128, 256, 512, 1024],
         'featuremaps': [512, 512, 512, 512, 256, 128, 64, 32, 16],
-        'w_ema_decay': 0.995,
-        'style_mixing_prob': 0.9,
         'truncation_psi': 0.7,
         'truncation_cutoff': 8,
     }
     z = tf.placeholder(tf.float32, shape=[None, z_dim], name='z')
-    alpha = tf.get_variable('alpha', shape=[], dtype=tf.float32, initializer=tf.initializers.zeros(), trainable=False)
+    alpha = tf.constant(0.0, dtype=tf.float32, shape=[], name='alpha')
     fake_images = generator(z, alpha, g_params, is_training)
 
     # assign which variables to retore
