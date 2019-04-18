@@ -30,9 +30,9 @@ def g_mapping(z, w_dim, n_mapping, n_broadcast):
 
 
 # initial synthesis block: const input
-def synthesis_const_block(res, n_f, w_broadcasted):
+def synthesis_const_block(res, w0, w1, n_f):
     lrmul = 1.0
-    batch_size = tf.shape(w_broadcasted)[0]
+    batch_size = tf.shape(w0)[0]
 
     with tf.variable_scope('{:d}x{:d}'.format(res, res)):
         with tf.variable_scope('Const'):
@@ -41,14 +41,14 @@ def synthesis_const_block(res, n_f, w_broadcasted):
             x = apply_noise(x)
             x = apply_bias(x, lrmul=lrmul)
             x = tf.nn.leaky_relu(x)
-            x = adaptive_instance_norm(x, w_broadcasted[:, 0])
+            x = adaptive_instance_norm(x, w0)
 
         with tf.variable_scope('Conv'):
             x = equalized_conv2d(x, n_f, kernel=3, gain=np.sqrt(2), lrmul=1.0)
             x = apply_noise(x)
             x = apply_bias(x, lrmul=lrmul)
             x = tf.nn.leaky_relu(x)
-            x = adaptive_instance_norm(x, w_broadcasted[:, 1])
+            x = adaptive_instance_norm(x, w1)
     return x
 
 
@@ -82,7 +82,7 @@ def g_synthesis(w_broadcasted, alpha, resolutions, featuremaps):
         # initial layer
         res = resolutions[0]
         n_f = featuremaps[0]
-        x = synthesis_const_block(res, n_f, w_broadcasted)
+        x = synthesis_const_block(res, w_broadcasted[:, 0], w_broadcasted[:, 1], n_f)
         images_out = torgb(x, res=res)
 
         # remaining layers
