@@ -40,28 +40,29 @@ def inference_generator_from_raw_tf(res):
     model_ckpt = tf.train.latest_checkpoint(os.path.join(model_dir))
     saver = tf.train.Saver(var_list=var_list)
 
-    # set same input status as official's
+    # set input latent z
+    n_output_samples = 4
     rnd = np.random.RandomState(5)
-    z_input_np = rnd.randn(1, z_dim)
+    z_input_np = rnd.randn(n_output_samples, z_dim)
 
     # generate image with official weights
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         saver.restore(sess, model_ckpt)
 
-        output = sess.run(fake_images, feed_dict={z: z_input_np})
-        print(output.shape)
+        output_batch = sess.run(fake_images, feed_dict={z: z_input_np})
 
-        output = post_process_generator_output(output)
-        output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
+        for ii in range(n_output_samples):
+            output = post_process_generator_output(output_batch[ii, :])
+            output = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
 
-        out_fn = os.path.join(image_out_dir, 'inference-{:d}x{:d}.png'.format(res, res))
-        cv2.imwrite(out_fn, output)
+            out_fn = os.path.join(image_out_dir, 'inference-{:d}-{:d}x{:d}.png'.format(ii, res, res))
+            cv2.imwrite(out_fn, output)
     return
 
 
 def main():
-    generation_res = 512
+    generation_res = 1024
     inference_generator_from_raw_tf(generation_res)
     return
 

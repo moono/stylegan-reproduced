@@ -3,15 +3,10 @@
 * Most of the code is __just copy__ of original source code
 * In this Repository, I tried to remove tflib and some if/else statements from official code
 
-## Current status
-* checking if training works
-
 ## Requirements
 * Tensorflow >= 1.13 
 * tensorflow estimator and [tf.contrib.distribute] for multi-GPU
-
-## Environment
-* V100 GPU x 4
+* Training time: approx. 5 days 8 hours with V100 * 4
 
 ## Steps to reproduce
 
@@ -21,7 +16,7 @@
 ### To check the generator network is properly copied
 1. export pretrained weight from official code
 2. set variable names to current implementation
-3. try to generate from official weights ([inference_from_official_model])
+3. try to generate from official weights `inference_from_official_weights.py`
 4. check the result
 
 | official output | current implementation |
@@ -32,18 +27,25 @@
 * Trying to use native tensorflow training framework ([tf.estimator])
 * It recreates tf.estimator object every time it needs to change resolution or transition state is over to clear the optimizer states
 * Run `train.py`
-* Current training status - 1024x1024
+* training progress in tensorboard - 1024x1024
 ![][Training-progress-1024x1024]
 
-### Key implementations in official code
-* Check [implementations]
+### Generation results after training
+* Generate using `inference.py`.
+
+|  |  |
+|:---------------:|:----------------------:|
+|![][inference-0-1024x1024]|![][inference-1-1024x1024]|
+|![][inference-2-1024x1024]|![][inference-3-1024x1024]|
+
 
 [tf.contrib.distribute]: https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/MirroredStrategy
-[inference_from_official_model]: ./inference_from_official_weights.py
+[tf.estimator]: https://www.tensorflow.org/guide/estimators
 [official-output]: ./assets/example.png
 [current-output]: ./assets/from-official-weights.png
 [Training-progress-512x512]: ./assets/Training-progress-512x512.png
 [Training-progress-1024x1024]: ./assets/Training-progress-1024x1024.png
-[tf.estimator]: https://www.tensorflow.org/guide/estimators
-[training code]: train.py
-[implementations]: ./implementations.md
+[inference-0-1024x1024]: ./assets/inference-0-1024x1024.png
+[inference-1-1024x1024]: ./assets/inference-1-1024x1024.png
+[inference-2-1024x1024]: ./assets/inference-2-1024x1024.png
+[inference-3-1024x1024]: ./assets/inference-3-1024x1024.png
