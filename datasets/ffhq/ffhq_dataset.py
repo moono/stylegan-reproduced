@@ -1,4 +1,5 @@
 import os
+import glob
 import numpy as np
 import tensorflow as tf
 
@@ -54,23 +55,27 @@ def compute_shuffle_buffer_size(my_ram_size_in_gigabytes, resolution):
     return shuffle_buffer_size
 
 
-def train_input_fn(tfrecord_base_dir, z_dim, resolution, batch_size, my_ram_size_in_gigabytes, epoch=None):
-    # compute shuffle buffer size
-    n_samples = 70000
-    shuffle_buffer_size = compute_shuffle_buffer_size(my_ram_size_in_gigabytes, resolution)
-    shuffle_buffer_size = min(shuffle_buffer_size, n_samples + 1)
-    print('{}x{}: shuffle_buffer_size: {}'.format(resolution, resolution, shuffle_buffer_size))
-
+def train_input_fn(tfrecord_base_dir, z_dim, resolution, batch_size, epochs=None):
     fn_index = int(np.log2(resolution))
-    tfrecord_fn = os.path.join(tfrecord_base_dir, 'ffhq-r{:02d}.tfrecords'.format(fn_index))
+    tfrecord_dir = os.path.join(tfrecord_base_dir, 'ffhq-r{:02d}.tfrecords'.format(fn_index))
+    tfrecord_list = glob.glob(os.path.join(tfrecord_dir, '*.tfrecords'))
 
-    dataset = tf.data.TFRecordDataset(tfrecord_fn)
+    n_samples = 70000
+    n_tfrecords = len(tfrecord_list)
+    n_elements_per_file = n_samples // n_tfrecords
+
+    dataset = tf.data.Dataset.list_files(tfrecord_list, shuffle=False)
+    dataset = dataset.shuffle(n_tfrecords + 1)
+    dataset = dataset.apply(tf.contrib.data.parallel_interleave(tf.data.TFRecordDataset, cycle_length=8))
+    # dataset = dataset.interleave(lambda x: tf.data.TFRecordDataset(x),
+    #                              cycle_length=2,
+    #                              num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    dataset = dataset.shuffle(buffer_size=n_elements_per_file + 1)
     dataset = dataset.map(parse_tfrecord_tf, num_parallel_calls=8)
     dataset = dataset.map(lambda images: add_random_latent_z(images, z_dim), num_parallel_calls=8)
-    dataset = dataset.shuffle(buffer_size=shuffle_buffer_size)
 
     # repeat() with count=None will make dataset repeated indefinitely (managed by tf.estimator's max_step)
-    dataset = dataset.repeat(epoch)
+    dataset = dataset.repeat(epochs)
 
     # When using dataset.prefetch, use buffer_size=None to let it detect optimal buffer size
     dataset = dataset.prefetch(buffer_size=None)
@@ -93,13 +98,12 @@ def train_input_fn(tfrecord_base_dir, z_dim, resolution, batch_size, my_ram_size
 def test_input_fn(tfrecord_dir):
     is_training = True
     z_dim = 512
-    resolution = 256
-    my_ram_size_in_gigabytes = 16
+    resolution = 256    # 8
 
     # in_mb = image_mb * buffer_size
     if is_training:
         batch_size = 8
-        dataset = train_input_fn(tfrecord_dir, z_dim, resolution, batch_size, my_ram_size_in_gigabytes)
+        dataset = train_input_fn(tfrecord_dir, z_dim, resolution, batch_size)
     else:
         dataset = eval_input_fn(z_dim, resolution)
 
@@ -123,9 +127,10 @@ def test_memory_overflow(tfrecord_dir):
 
     # resolutions = [4, 8, 16, 32, 64, 128, 256, 512, 1024]
     # batch_sizes = [128, 128, 128, 64, 32, 16, 8, 4, 4]
-    resolutions = [256, 512, 1024]
-    batch_sizes = [8, 4, 4]
-    my_ram_size_in_gigabytes = 16
+    # resolutions = [256, 512, 1024]
+    # batch_sizes = [8, 4, 4]
+    resolutions = [1024]
+    batch_sizes = [4]
 
     n_samples = 70000
     n_images_to_show_on_training = 600000 * 2
@@ -133,7 +138,7 @@ def test_memory_overflow(tfrecord_dir):
     for res, batch_size in zip(resolutions, batch_sizes):
         approx_max_step = int(np.ceil(approx_epochs * n_samples / batch_size))
         print('[{:d}x{:d}] approx_max_step: {}'.format(res, res, approx_max_step))
-        dataset = train_input_fn(tfrecord_dir, z_dim, res, batch_size, my_ram_size_in_gigabytes, epoch=approx_epochs)
+        dataset = train_input_fn(tfrecord_dir, z_dim, res, batch_size, epochs=approx_epochs)
         iterator = dataset.make_one_shot_iterator()
         images, labels = iterator.get_next()
 
@@ -156,8 +161,8 @@ def test_memory_overflow(tfrecord_dir):
 
 
 def main():
-    # tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq'
-    tfrecord_dir = './tfrecords'
+    tfrecord_dir = '/mnt/vision-nas/data-sets/stylegan/ffhq-dataset/tfrecords/ffhq-sliced'
+    # tfrecord_dir = './tfrecords'
 
     test_memory_overflow(tfrecord_dir)
     # test_input_fn(tfrecord_dir)
