@@ -167,10 +167,7 @@ def model_fn(features, labels, mode, params):
 
     # determine smooth transition state and compute alpha value
     alpha_const = smooth_transition_state(batch_size, global_step, train_trans_images_per_res_tensor, zero_constant)
-    if do_train_trans:
-        alpha_assign_op = tf.assign(alpha, alpha_const)
-    else:
-        alpha_assign_op = tf.assign(alpha, zero_constant)
+    alpha_assign_op = tf.assign(alpha, alpha_const)
 
     # ==================================================================================================================
     # TRAINING
