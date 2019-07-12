@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from network.official_code_ops import blur2d, downscale2d, minibatch_stddev_layer
 from network.common_ops import (
-    equalized_dense, equalized_conv2d, conv2d_downscale2d, apply_bias, fromrgb, smooth_transition
+    dense, conv2d, conv2d_downscale2d, apply_bias, fromrgb, smooth_transition
 )
 
 
@@ -12,7 +12,7 @@ def discriminator_block(x, res, n_f0, n_f1):
     lrmul = 1.0
     with tf.variable_scope('{:d}x{:d}'.format(res, res)):
         with tf.variable_scope('Conv0'):
-            x = equalized_conv2d(x, n_f0, kernel=3, gain=gain, lrmul=lrmul)
+            x = conv2d(x, n_f0, kernel=3, gain=gain, lrmul=lrmul)
             x = apply_bias(x, lrmul=lrmul)
             x = tf.nn.leaky_relu(x)
 
@@ -30,15 +30,15 @@ def discriminator_last_block(x, res, n_f0, n_f1):
     with tf.variable_scope('{:d}x{:d}'.format(res, res)):
         x = minibatch_stddev_layer(x, group_size=4, num_new_features=1)
         with tf.variable_scope('Conv0'):
-            x = equalized_conv2d(x, n_f0, kernel=3, gain=gain, lrmul=lrmul)
+            x = conv2d(x, n_f0, kernel=3, gain=gain, lrmul=lrmul)
             x = apply_bias(x, lrmul=lrmul)
             x = tf.nn.leaky_relu(x)
         with tf.variable_scope('Dense0'):
-            x = equalized_dense(x, n_f1, gain=gain, lrmul=lrmul)
+            x = dense(x, n_f1, gain=gain, lrmul=lrmul)
             x = apply_bias(x, lrmul=lrmul)
             x = tf.nn.leaky_relu(x)
         with tf.variable_scope('Dense1'):
-            x = equalized_dense(x, 1, gain=1.0, lrmul=lrmul)
+            x = dense(x, 1, gain=1.0, lrmul=lrmul)
             x = apply_bias(x, lrmul=lrmul)
     return x
 

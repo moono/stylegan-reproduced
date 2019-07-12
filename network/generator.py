@@ -3,7 +3,7 @@ import tensorflow as tf
 
 from network.official_code_ops import blur2d, upscale2d
 from network.common_ops import (
-    equalized_dense, equalized_conv2d, upscale2d_conv2d, apply_bias, apply_noise,
+    dense, conv2d, upscale2d_conv2d, apply_bias, apply_noise,
     pixel_norm, adaptive_instance_norm, lerp, torgb, smooth_transition
 )
 
@@ -19,7 +19,7 @@ def g_mapping(z, w_dim, n_mapping, n_broadcast):
         # run through mapping network
         for ii in range(n_mapping):
             with tf.variable_scope('Dense{:d}'.format(ii)):
-                x = equalized_dense(x, w_dim, gain=gain, lrmul=lrmul)
+                x = dense(x, w_dim, gain=gain, lrmul=lrmul)
                 x = apply_bias(x, lrmul=lrmul)
                 x = tf.nn.leaky_relu(x)
 
@@ -31,6 +31,7 @@ def g_mapping(z, w_dim, n_mapping, n_broadcast):
 
 # initial synthesis block: const input
 def synthesis_const_block(res, w0, w1, n_f):
+    gain = np.sqrt(2)
     lrmul = 1.0
     batch_size = tf.shape(w0)[0]
 
@@ -44,7 +45,7 @@ def synthesis_const_block(res, w0, w1, n_f):
             x = adaptive_instance_norm(x, w0)
 
         with tf.variable_scope('Conv'):
-            x = equalized_conv2d(x, n_f, kernel=3, gain=np.sqrt(2), lrmul=1.0)
+            x = conv2d(x, n_f, kernel=3, gain=gain, lrmul=lrmul)
             x = apply_noise(x)
             x = apply_bias(x, lrmul=lrmul)
             x = tf.nn.leaky_relu(x)
@@ -53,10 +54,11 @@ def synthesis_const_block(res, w0, w1, n_f):
 
 
 def synthesis_block(x, res, w0, w1, n_f):
+    gain = np.sqrt(2)
     lrmul = 1.0
     with tf.variable_scope('{:d}x{:d}'.format(res, res)):
         with tf.variable_scope('Conv0_up'):
-            x = upscale2d_conv2d(x, n_f, kernel=3, gain=np.sqrt(2), lrmul=1.0)
+            x = upscale2d_conv2d(x, n_f, kernel=3, gain=gain, lrmul=lrmul)
             x = blur2d(x, [1, 2, 1])
             x = apply_noise(x)
             x = apply_bias(x, lrmul=lrmul)
@@ -64,7 +66,7 @@ def synthesis_block(x, res, w0, w1, n_f):
             x = adaptive_instance_norm(x, w0)
 
         with tf.variable_scope('Conv1'):
-            x = equalized_conv2d(x, n_f, kernel=3, gain=np.sqrt(2), lrmul=1.0)
+            x = conv2d(x, n_f, kernel=3, gain=gain, lrmul=lrmul)
             x = apply_noise(x)
             x = apply_bias(x, lrmul=lrmul)
             x = tf.nn.leaky_relu(x)
