@@ -35,3 +35,17 @@ def post_process_generator_output(generator_output):
     scaled_image = np.clip(scaled_image, 0, 255)
     scaled_image = scaled_image.astype('uint8')
     return scaled_image
+
+
+def compute_shuffle_buffer_size(my_ram_size_in_gigabytes, resolution, n_samples):
+    # compute single image size in bytes
+    image_shape = (3, resolution, resolution)
+    uint8_in_bytes = np.dtype('uint8').itemsize
+    bytes_per_image = np.prod(image_shape) * uint8_in_bytes
+
+    # try to use 10% ram
+    buffer_size_limit_in_gigabytes = max(1, int(my_ram_size_in_gigabytes * 0.1))
+    buffer_size_limit_in_bytes = int(buffer_size_limit_in_gigabytes * 1e9)
+    shuffle_buffer_size = buffer_size_limit_in_bytes // bytes_per_image
+    shuffle_buffer_size = min(shuffle_buffer_size, n_samples + 1)
+    return shuffle_buffer_size
