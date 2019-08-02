@@ -57,7 +57,9 @@ def smooth_transition_state(batch_size, global_step, train_trans_images_per_res_
     n_cur_img = batch_size * global_step
     n_cur_img = tf.cast(n_cur_img, dtype=tf.float32)
 
-    is_transition_state = tf.less_equal(n_cur_img, train_trans_images_per_res_tensor)
+    do_transition_train = tf.math.greater(train_trans_images_per_res_tensor, 0)
+    is_transition_state = tf.math.logical_and(do_transition_train,
+                                              tf.less_equal(n_cur_img, train_trans_images_per_res_tensor))
     alpha = tf.cond(is_transition_state,
                     true_fn=lambda: (train_trans_images_per_res_tensor - n_cur_img) / train_trans_images_per_res_tensor,
                     false_fn=lambda: zero_constant)
@@ -117,7 +119,6 @@ def convert_to_rgb_images(images):
 
 def model_fn(features, labels, mode, params):
     # parse params
-    z_dim = params['z_dim']
     w_dim = params['w_dim']
     n_mapping = params['n_mapping']
     resolutions = params['resolutions']
@@ -128,8 +129,6 @@ def model_fn(features, labels, mode, params):
     do_train_trans = params['do_train_trans']
     train_trans_images_per_res = params['train_trans_images_per_res']
     batch_size = params['batch_size']
-    g_learning_rate = params['g_learning_rate']
-    d_learning_rate = params['d_learning_rate']
 
     # additional params
     train_res = resolutions[-1]
@@ -167,17 +166,19 @@ def model_fn(features, labels, mode, params):
 
     # determine smooth transition state and compute alpha value
     alpha_const = smooth_transition_state(batch_size, global_step, train_trans_images_per_res_tensor, zero_constant)
-    if do_train_trans:
-        alpha_assign_op = tf.assign(alpha, alpha_const)
-    else:
-        alpha_assign_op = tf.assign(alpha, zero_constant)
+    alpha_assign_op = tf.assign(alpha, alpha_const)
 
     # ==================================================================================================================
     # TRAINING
     # ==================================================================================================================
     if mode == tf.estimator.ModeKeys.TRAIN:
+        # get training specific parameters
+        z_dim = params['z_dim']
+        g_learning_rate = params['g_learning_rate']
+        d_learning_rate = params['d_learning_rate']
+
         # get inputs: latent z, real image input
-        z = features['z']
+        z = tf.random_normal(shape=[batch_size, z_dim], dtype=tf.float32)
         real_images = features['real_images']
 
         # get network outputs
@@ -225,9 +226,16 @@ def model_fn(features, labels, mode, params):
         return tf.estimator.EstimatorSpec(mode=mode, loss=loss, train_op=train_op, eval_metric_ops={}, predictions={})
 
     # ==================================================================================================================
-    # PREDICTION & EVALUATION
+    # EVALUATION
     # ==================================================================================================================
-    if mode == tf.estimator.ModeKeys.PREDICT or mode == tf.estimator.ModeKeys.EVAL:
+    if mode == tf.estimator.ModeKeys.EVAL:
+        # tf.summary.image not working on eval mode?
+        return tf.estimator.EstimatorSpec(mode=mode, loss=zero_constant, eval_metric_ops={})
+
+    # ==================================================================================================================
+    # PREDICTION
+    # ==================================================================================================================
+    if mode == tf.estimator.ModeKeys.PREDICT:
         # get input latent z
         z = features['z']
 
@@ -239,10 +247,3 @@ def model_fn(features, labels, mode, params):
         }
         if mode == tf.estimator.ModeKeys.PREDICT:
             return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
-
-        if mode == tf.estimator.ModeKeys.EVAL:
-            # tf.summary.image not working on eval mode?
-            # summary_fake_images_eval = convert_to_rgb_images(fake_images_eval)
-            # tf.summary.image('fake_images_eval', summary_fake_images_eval[:5], max_outputs=5)
-            return tf.estimator.EstimatorSpec(mode=mode, loss=zero_constant,
-                                              eval_metric_ops={}, predictions=predictions)

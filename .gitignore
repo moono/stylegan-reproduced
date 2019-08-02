@@ -110,3 +110,5 @@ venv.bak/
 *.tfrecords
 *.pkl
 official-pretrained/
+models/
+datasets/dummy/

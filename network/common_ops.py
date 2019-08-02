@@ -18,7 +18,7 @@ def get_weight(weight_shape, gain, lrmul):
     return weight
 
 
-def equalized_dense(x, units, gain, lrmul):
+def dense(x, units, gain, lrmul):
     x = tf.layers.flatten(x)
     weight_shape = [x.get_shape().as_list()[1], units]
     w = get_weight(weight_shape, gain, lrmul)
@@ -26,7 +26,7 @@ def equalized_dense(x, units, gain, lrmul):
     return x
 
 
-def equalized_conv2d(x, fmaps, kernel, gain, lrmul):
+def conv2d(x, fmaps, kernel, gain, lrmul):
     assert kernel >= 1 and kernel % 2 == 1
     weight_shape = [kernel, kernel, x.get_shape().as_list()[1], fmaps]
     w = get_weight(weight_shape, gain, lrmul)
@@ -44,7 +44,7 @@ def upscale2d_conv2d(x, fmaps, kernel, gain, lrmul):
     # Not fused => call the individual ops directly.
     if not fused_scale:
         x = upscale2d(x)
-        x = equalized_conv2d(x, fmaps, kernel, gain, lrmul)
+        x = conv2d(x, fmaps, kernel, gain, lrmul)
         return x
 
     # Fused => perform both ops simultaneously using tf.nn.conv2d_transpose().
@@ -66,7 +66,7 @@ def conv2d_downscale2d(x, fmaps, kernel, gain, lrmul):
 
     # Not fused => call the individual ops directly.
     if not fused_scale:
-        x = equalized_conv2d(x, fmaps, kernel, gain, lrmul)
+        x = conv2d(x, fmaps, kernel, gain, lrmul)
         x = downscale2d(x)
         return x
 
@@ -112,13 +112,14 @@ def instance_norm(x, epsilon=1e-8):
     with tf.variable_scope('InstanceNorm'):
         epsilon = tf.constant(epsilon, dtype=tf.float32, name='epsilon')
 
-        # tf.reduce_mean(x, axis=[2, 3], keepdims=True): [?, 512, 1, 1]
-        # x: [?, 512, h, w]
-        x = x - tf.reduce_mean(x, axis=[2, 3], keepdims=True)
+        # [?, 512, 1, 1]
+        mean = tf.reduce_mean(x, axis=[2, 3], keepdims=True)
 
-        # tf.reduce_mean(tf.square(x), axis=[2, 3], keepdims=True): [?, 512, 1, 1]
-        # x: [?, 512, h, w]
-        x = x * tf.rsqrt(tf.reduce_mean(tf.square(x), axis=[2, 3], keepdims=True) + epsilon)
+        # [?, 512, 1, 1]
+        var = tf.reduce_mean(tf.square(x - mean), axis=[2, 3], keepdims=True)
+
+        # [?, 512, h, w]
+        x = (x - mean) * tf.rsqrt(var + epsilon)
     return x
 
 
@@ -130,15 +131,17 @@ def style_mod(x, w):
         units = x.shape[1] * 2
 
         # style: [?, 1024]
-        style = equalized_dense(w, units, gain=1.0, lrmul=1.0)
+        style = dense(w, units, gain=1.0, lrmul=1.0)
         style = apply_bias(style, lrmul=1.0)
 
         # style: [?, 2, 512, 1, 1]
-        style = tf.reshape(style, [-1, 2, x.shape[1]] + [1] * (len(x.shape) - 2))
+        style = tf.reshape(style, [-1, 2, x.shape[1], 1, 1])
+        scale = style[:, 0]
+        bias = style[:, 1]
 
         # x * (style[:, 0] + 1): [?, 512, h, w]
         # x: [?, 512, h, w]
-        x = x * (style[:, 0] + 1) + style[:, 1]
+        x = x * (scale + 1) + bias
     return x
 
 
@@ -167,7 +170,7 @@ def lerp_clip(a, b, t):
 def torgb(x, res):
     with tf.variable_scope('{:d}x{:d}'.format(res, res)):
         with tf.variable_scope('ToRGB'):
-            x = equalized_conv2d(x, fmaps=3, kernel=1, gain=1.0, lrmul=1.0)
+            x = conv2d(x, fmaps=3, kernel=1, gain=1.0, lrmul=1.0)
             x = apply_bias(x, lrmul=1.0)
     return x
 
@@ -175,7 +178,7 @@ def torgb(x, res):
 def fromrgb(x, res, n_f):
     with tf.variable_scope('{:d}x{:d}'.format(res, res)):
         with tf.variable_scope('FromRGB'):
-            x = equalized_conv2d(x, fmaps=n_f, kernel=1, gain=np.sqrt(2), lrmul=1.0)
+            x = conv2d(x, fmaps=n_f, kernel=1, gain=np.sqrt(2), lrmul=1.0)
             x = apply_bias(x, lrmul=1.0)
             x = tf.nn.leaky_relu(x)
     return x
