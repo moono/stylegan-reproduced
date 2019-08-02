@@ -7,6 +7,7 @@
 * Tensorflow >= 1.13 
 * tensorflow estimator and [tf.contrib.distribute] for multi-GPU
 * Training time: approx. 5 days 8 hours with V100 * 4
+  * note: training step on resolution 1024x1024 is much less than official one
 
 ## Steps to reproduce
 
